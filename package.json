@@ -1,0 +1,12 @@
+{
+  "name": "housedesign",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "cd housedesign-ui && npm run dev",
+    "build": "cd housedesign-core && npm run build && cd ../housedesign-ui && npm run build",
+    "build:core": "cd housedesign-core && npm run build",
+    "preview": "cd housedesign-ui && npm run preview"
+  }
+}
