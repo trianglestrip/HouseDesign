@@ -53,6 +53,10 @@ let dimensionLine: fabric.Line | null = null; // 尺寸标注线
 let dimensionText: fabric.Text | null = null; // 尺寸文字
 let gridLines: FabricObject[] = []; // 网格线对象数组
 
+// 渲染循环标志
+let needRedrawGrid = false; // 是否需要重绘网格
+let animationFrameId: number | null = null; // requestAnimationFrame ID
+
 // 刻度尺标记数据
 const topRulerMarks = ref<Array<{ index: number; position: number; value: string; isMajor: boolean }>>([]);
 const leftRulerMarks = ref<Array<{ index: number; position: number; value: string; isMajor: boolean }>>([]);
@@ -165,6 +169,11 @@ function drawGrid(canvas: Canvas, width: number, height: number) {
   });
 }
 
+// 标记需要重绘网格
+function markGridNeedsRedraw() {
+  needRedrawGrid = true;
+}
+
 // 重新绘制网格（根据当前视口）
 function redrawGrid() {
   if (!canvas) return;
@@ -237,6 +246,36 @@ function redrawGrid() {
   console.log('[redrawGrid] 绘制了', gridLines.length, '条新网格线');
   
   canvas.requestRenderAll();
+}
+
+// 统一渲染循环（60FPS）
+function renderLoop() {
+  if (!canvas) return;
+  
+  // 检查是否需要重绘网格
+  if (needRedrawGrid) {
+    redrawGrid();
+    needRedrawGrid = false;
+  }
+  
+  // 继续下一帧
+  animationFrameId = requestAnimationFrame(renderLoop);
+}
+
+// 启动渲染循环
+function startRenderLoop() {
+  if (animationFrameId !== null) return; // 已经在运行
+  animationFrameId = requestAnimationFrame(renderLoop);
+  console.log('[renderLoop] 启动 60FPS 渲染循环');
+}
+
+// 停止渲染循环
+function stopRenderLoop() {
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+    console.log('[renderLoop] 停止渲染循环');
+  }
 }
 
 // 更新刻度尺标记（HTML 元素，不在 Canvas 内）
@@ -911,8 +950,8 @@ onMounted(async () => {
     const point = canvas!.getScenePoint(opt.e);
     canvas!.zoomToPoint(point, zoom);
     
-    // 重新绘制网格以适应新的视口
-    redrawGrid();
+    // 标记需要重绘网格
+    markGridNeedsRedraw();
     
     opt.e.preventDefault();
     opt.e.stopPropagation();
@@ -956,8 +995,8 @@ onMounted(async () => {
       canvas!.selection = editorStore.currentTool === 'select';
       canvas!.defaultCursor = editorStore.currentTool === 'select' ? 'default' : 'crosshair';
       
-      // 平移结束后重新绘制网格
-      redrawGrid();
+      // 标记需要重绘网格
+      markGridNeedsRedraw();
     }
   });
 
@@ -1116,22 +1155,14 @@ onMounted(async () => {
       const newWidth = canvasContainer.value.clientWidth;
       const newHeight = canvasContainer.value.clientHeight;
       
-      // 清除旧的网格线
-      const objects = canvas.getObjects().slice();
-      objects.forEach(obj => {
-        if (obj.type === 'line' && !obj.selectable) {
-          canvas!.remove(obj);
-        }
-      });
-      
       // 重新设置画布尺寸
       canvas.setDimensions({
         width: newWidth,
         height: newHeight,
       });
       
-      // 重新绘制网格
-      drawGrid(canvas, newWidth, newHeight);
+      // 标记需要重绘网格
+      markGridNeedsRedraw();
       
       // 更新刻度尺标记（HTML 元素）
       updateRulers(newWidth, newHeight);
@@ -1143,6 +1174,9 @@ onMounted(async () => {
     }
   });
   resizeObserver.observe(container);
+  
+  // 启动渲染循环
+  startRenderLoop();
 });
 
 onUnmounted(() => {
@@ -1150,6 +1184,9 @@ onUnmounted(() => {
   canvas?.dispose();
   canvas = null;
   idToFabricObject.clear();
+  
+  // 停止渲染循环
+  stopRenderLoop();
   
   // 清理键盘事件监听
   window.removeEventListener('keydown', handleKeyDown);
