@@ -56,6 +56,7 @@ let gridLines: FabricObject[] = []; // 网格线对象数组
 // 渲染循环标志
 let needRedrawGrid = false; // 是否需要重绘网格
 let animationFrameId: number | null = null; // requestAnimationFrame ID
+let isDraggingEndpoint = false; // 是否正在拖动端点
 
 // 刻度尺标记数据
 const topRulerMarks = ref<Array<{ index: number; position: number; value: string; isMajor: boolean }>>([]);
@@ -543,9 +544,42 @@ function renderAllWalls() {
   console.log('[renderAllWalls] 渲染完成');
 }
 
+// 更新端点位置（不重新创建，用于拖动时）
+function updateEndpointPositions() {
+  if (!canvas) return;
+  
+  const topology = geometryKernel.getTopology();
+  const endpointConfig = renderConfig.value.endpoint;
+  const scale = renderConfig.value.scale.pixelsPerMeter / 1000; // mm -> px
+  
+  // 更新现有端点位置
+  topology.getNodes().forEach(node => {
+    const circle = wallEndpoints.get(node.id);
+    if (circle && !canvas!.getActiveObject()?.equals(circle)) {
+      // 只更新非拖动中的端点
+      const posPx = {
+        x: node.position.x * scale,
+        y: node.position.y * scale,
+      };
+      
+      circle.set({
+        left: posPx.x - endpointConfig.radius,
+        top: posPx.y - endpointConfig.radius,
+      });
+      circle.setCoords();
+    }
+  });
+}
+
 // 渲染端点控制点（显示在墙体中心线上）
 function renderEndpoints() {
   if (!canvas) return;
+  
+  // 如果正在拖动端点，只更新位置不重新创建
+  if (isDraggingEndpoint) {
+    updateEndpointPositions();
+    return;
+  }
   
   // 清除旧的端点
   wallEndpoints.forEach(circle => canvas!.remove(circle));
@@ -581,9 +615,19 @@ function renderEndpoints() {
     
     (circle as any).data = { type: 'endpoint', nodeId: node.id };
     
+    // 端点拖动开始
+    circle.on('mousedown', () => {
+      isDraggingEndpoint = true;
+    });
+    
     // 端点拖动事件
     circle.on('moving', (e: any) => {
       const target = e.target as fabric.Circle;
+      if (!target || !(target as any).data) {
+        console.warn('[拖动端点] 目标对象无效');
+        return;
+      }
+      
       const nodeId = (target as any).data.nodeId;
       
       // 像素坐标转毫米
@@ -601,8 +645,13 @@ function renderEndpoints() {
       // 移动节点（毫米单位）
       geometryKernel.moveNode(nodeId, newPosMm);
       
-      // 重新渲染所有墙体
+      // 重新渲染所有墙体（但不重新创建端点）
       renderAllWalls();
+    });
+    
+    // 端点拖动结束
+    circle.on('mouseup', () => {
+      isDraggingEndpoint = false;
     });
     
     // 悬停效果
@@ -990,6 +1039,12 @@ onMounted(async () => {
   });
   
   canvas.on('mouse:up', () => {
+    // 重置拖动端点标志
+    if (isDraggingEndpoint) {
+      isDraggingEndpoint = false;
+      console.log('[拖动端点] 拖动结束');
+    }
+    
     if (isPanning) {
       isPanning = false;
       canvas!.selection = editorStore.currentTool === 'select';
