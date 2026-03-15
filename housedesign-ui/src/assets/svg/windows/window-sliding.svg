@@ -1,7 +1,0 @@
-<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-  <rect x="20" y="25" width="60" height="50" fill="none" stroke="currentColor" stroke-width="3" />
-  <rect x="25" y="30" width="25" height="40" fill="none" stroke="currentColor" stroke-width="2" />
-  <rect x="50" y="30" width="25" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="5,3" opacity="0.6" />
-  <line x1="30" y1="35" x2="30" y2="65" stroke="currentColor" stroke-width="1" />
-  <line x1="40" y1="35" x2="40" y2="65" stroke="currentColor" stroke-width="1" />
-</svg>

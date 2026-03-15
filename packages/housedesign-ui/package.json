@@ -1,0 +1,16 @@
+{
+  "name": "@housedesign/ui",
+  "version": "1.0.0",
+  "description": "House design UI application",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@housedesign/core": "file:../housedesign-core"
+  }
+}

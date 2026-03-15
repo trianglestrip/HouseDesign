@@ -1,0 +1,21 @@
+{
+  "name": "@housedesign/core",
+  "version": "1.0.0",
+  "description": "Industrial-grade CAD/BIM core library",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": ["cad", "bim", "house-design", "2d", "3d"],
+  "author": "",
+  "license": "MIT"
+}

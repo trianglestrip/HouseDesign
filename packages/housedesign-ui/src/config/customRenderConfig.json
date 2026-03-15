@@ -1,0 +1,15 @@
+{
+  "wall": {
+    "fillColor": "#F0F0F0",
+    "centerLineColor": "#FF0000",
+    "outlineColor": "#333333"
+  },
+  "node": {
+    "fillColor": "#0066FF",
+    "highlightColor": "#00FF00"
+  },
+  "grid": {
+    "color": "#DDDDDD",
+    "size": 100
+  }
+}
