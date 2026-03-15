@@ -82,6 +82,11 @@ export interface SerializedDesign {
   metadata: DesignMetadata;
   elements: EditorElement[];
   selection: string[];
+  geometry?: any; // GeometryKernel数据（可选，用于向后兼容）
+  viewport?: {
+    zoom: number;
+    pan: { x: number; y: number };
+  };
 }
 
 /** 存储项信息 */

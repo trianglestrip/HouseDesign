@@ -4,6 +4,7 @@
  */
 
 import type { EditorElement, DesignMetadata, SerializedDesign } from './Types';
+import type { GeometryKernel } from './GeometryKernel';
 
 export const DATA_FORMAT_VERSION = 1;
 
@@ -60,7 +61,9 @@ export class Serializer {
   static serialize(
     elements: EditorElement[],
     selection: string[] = [],
-    metadata?: Partial<DesignMetadata>
+    metadata?: Partial<DesignMetadata>,
+    geometryKernel?: GeometryKernel,
+    viewport?: { zoom: number; pan: { x: number; y: number } }
   ): string {
     const design: SerializedDesign = {
       version: DATA_FORMAT_VERSION,
@@ -72,6 +75,17 @@ export class Serializer {
       elements: elements.map((el) => ({ ...el })),
       selection: [...selection],
     };
+    
+    // 添加几何数据（如果提供）
+    if (geometryKernel) {
+      design.geometry = geometryKernel.toJSON();
+    }
+    
+    // 添加视口数据（如果提供）
+    if (viewport) {
+      design.viewport = viewport;
+    }
+    
     return JSON.stringify(design, null, 2);
   }
 

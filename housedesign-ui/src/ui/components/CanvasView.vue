@@ -175,6 +175,105 @@ function showDimensionInput(x: number, y: number) {
   dimensionInputMode.value = 'length';
 }
 
+// 导出场景到JSON文件
+function exportScene() {
+  if (!canvas) return;
+  
+  try {
+    // 获取视口状态
+    const vpt = canvas.viewportTransform!;
+    const viewport = {
+      zoom: canvas.getZoom(),
+      pan: { x: vpt[4], y: vpt[5] },
+    };
+    
+    // 序列化数据（包含几何数据）
+    const { Serializer } = require('@housedesign/core');
+    const elements = engine.getAllElements();
+    const selection: string[] = [];
+    const metadata = {
+      name: editorStore.projectName || '未命名项目',
+    };
+    
+    const json = Serializer.serialize(elements, selection, metadata, geometryKernel, viewport);
+    
+    // 创建下载链接
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${metadata.name}_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    console.log('[导出] 场景已导出');
+  } catch (error) {
+    console.error('[导出] 错误:', error);
+  }
+}
+
+// 导入场景从JSON文件
+function importScene(data: any) {
+  if (!canvas) return;
+  
+  try {
+    const { Serializer, GeometryKernel: GK } = require('@housedesign/core');
+    const design = typeof data === 'string' ? Serializer.deserialize(data) : data;
+    
+    if (!design) {
+      console.error('[导入] 无效的数据格式');
+      return;
+    }
+    
+    // 清空当前场景
+    canvas.clear();
+    gridLines = [];
+    wallEndpoints.clear();
+    currentNodeId = null;
+    
+    // 恢复几何数据
+    if (design.geometry) {
+      const newKernel = GK.fromJSON(design.geometry);
+      
+      // 复制数据到当前kernel
+      Object.assign(geometryKernel, {
+        topology: newKernel.getTopology(),
+        walls: newKernel['walls'],
+        openings: newKernel['openings'],
+        rooms: newKernel['rooms'],
+        nextWallId: newKernel['nextWallId'],
+        nextOpeningId: newKernel['nextOpeningId'],
+        nextRoomId: newKernel['nextRoomId'],
+      });
+    }
+    
+    // 恢复视口状态
+    if (design.viewport) {
+      canvas.setZoom(design.viewport.zoom);
+      const vpt = canvas.viewportTransform!;
+      vpt[4] = design.viewport.pan.x;
+      vpt[5] = design.viewport.pan.y;
+    }
+    
+    // 恢复元数据
+    if (design.metadata?.name) {
+      editorStore.setProjectName(design.metadata.name);
+    }
+    
+    // 重新绘制
+    const width = canvas.width!;
+    const height = canvas.height!;
+    drawGrid(canvas, width, height);
+    updateRulers(width, height);
+    renderAllWalls();
+    markGridNeedsRedraw();
+    
+    console.log('[导入] 场景已导入');
+  } catch (error) {
+    console.error('[导入] 错误:', error);
+  }
+}
+
 // 注册常用快捷键
 function registerCommonShortcuts() {
   // Ctrl+Z: 撤销
@@ -221,6 +320,37 @@ function registerCommonShortcuts() {
     console.log('[快捷键] Space - 选择工具');
     return false;
   }, { preventDefault: true });
+
+  // Ctrl+S: 导出场景
+  shortcuts.registerShortcut('s', () => {
+    exportScene();
+    console.log('[快捷键] Ctrl+S - 导出场景');
+    return false;
+  }, { ctrl: true, preventDefault: true });
+
+  // Ctrl+O: 导入场景（触发文件选择）
+  shortcuts.registerShortcut('o', () => {
+    // 创建临时文件输入
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (file) {
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          importScene(data);
+        } catch (error) {
+          console.error('[导入] 错误:', error);
+        }
+      }
+    };
+    input.click();
+    console.log('[快捷键] Ctrl+O - 导入场景');
+    return false;
+  }, { ctrl: true, preventDefault: true });
 
   console.log('[快捷键] 已注册常用快捷键:', shortcuts.getRegisteredShortcuts());
 }
