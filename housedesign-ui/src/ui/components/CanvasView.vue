@@ -9,6 +9,7 @@ import {
   DEFAULT_RENDER_CONFIG,
   type RenderConfig,
   mmToPixels,
+  SnapType,
 } from '@housedesign/core';
 import { useEditorStore } from '../stores/editorStore';
 import { Canvas, Rect } from 'fabric';
@@ -50,6 +51,7 @@ let snapIndicator: fabric.Circle | null = null; // 吸附点指示器
 let wallEndpoints: Map<string, fabric.Circle> = new Map(); // 墙体端点控制点
 let dimensionLine: fabric.Line | null = null; // 尺寸标注线
 let dimensionText: fabric.Text | null = null; // 尺寸文字
+let gridLines: FabricObject[] = []; // 网格线对象数组
 
 // 刻度尺标记数据
 const topRulerMarks = ref<Array<{ index: number; position: number; value: string; isMajor: boolean }>>([]);
@@ -122,7 +124,7 @@ async function loadRenderConfig() {
 // 绘制网格线（每5格用更深的颜色）
 function drawGrid(canvas: Canvas, width: number, height: number) {
   const config = renderConfig.value.grid;
-  const gridLines: FabricObject[] = [];
+  gridLines = [];
 
   // 绘制垂直线
   for (let i = 0; i * config.size <= width; i++) {
@@ -161,6 +163,70 @@ function drawGrid(canvas: Canvas, width: number, height: number) {
   gridLines.forEach(line => {
     canvas.sendObjectToBack(line);
   });
+}
+
+// 重新绘制网格（根据当前视口）
+function redrawGrid() {
+  if (!canvas) return;
+  
+  // 移除旧网格线
+  gridLines.forEach(line => {
+    canvas!.remove(line);
+  });
+  gridLines = [];
+  
+  // 计算当前可视区域（考虑缩放和平移）
+  const vpt = canvas.viewportTransform!;
+  const zoom = canvas.getZoom();
+  
+  // 视口左上角在画布坐标系中的位置
+  const viewportLeft = -vpt[4] / zoom;
+  const viewportTop = -vpt[5] / zoom;
+  
+  // 视口宽高
+  const viewportWidth = canvas.width! / zoom;
+  const viewportHeight = canvas.height! / zoom;
+  
+  // 计算需要绘制网格的范围（稍微扩大一点以确保覆盖）
+  const config = renderConfig.value.grid;
+  const gridSize = config.size;
+  
+  const startX = Math.floor(viewportLeft / gridSize) * gridSize;
+  const endX = Math.ceil((viewportLeft + viewportWidth) / gridSize) * gridSize;
+  const startY = Math.floor(viewportTop / gridSize) * gridSize;
+  const endY = Math.ceil((viewportTop + viewportHeight) / gridSize) * gridSize;
+  
+  // 绘制垂直线
+  for (let x = startX; x <= endX; x += gridSize) {
+    const index = Math.round(x / gridSize);
+    const isMajor = index % config.majorInterval === 0;
+    
+    const line = new fabric.Line([x, startY, x, endY], {
+      stroke: isMajor ? config.majorColor : config.color,
+      strokeWidth: isMajor ? config.majorStrokeWidth : config.strokeWidth,
+      selectable: false,
+      evented: false,
+    });
+    gridLines.push(line);
+    canvas.add(line);
+    canvas.sendObjectToBack(line);
+  }
+  
+  // 绘制水平线
+  for (let y = startY; y <= endY; y += gridSize) {
+    const index = Math.round(y / gridSize);
+    const isMajor = index % config.majorInterval === 0;
+    
+    const line = new fabric.Line([startX, y, endX, y], {
+      stroke: isMajor ? config.majorColor : config.color,
+      strokeWidth: isMajor ? config.majorStrokeWidth : config.strokeWidth,
+      selectable: false,
+      evented: false,
+    });
+    gridLines.push(line);
+    canvas.add(line);
+    canvas.sendObjectToBack(line);
+  }
 }
 
 // 更新刻度尺标记（HTML 元素，不在 Canvas 内）
@@ -332,11 +398,22 @@ function addWallPoint(x: number, y: number) {
   } else {
     // 后续点：创建墙体（使用毫米单位）
     const thicknessMm = getWallThickness();
+    
+    // 检查是否吸附到已有端点（会自动合并节点）
+    const isSnapToEndpoint = snapResult && snapResult.type === SnapType.Endpoint && snapResult.targetId;
+    
     const result = geometryKernel.addWallPoint(finalPosMm, currentNodeId, thicknessMm);
     
-    console.log('[addWallPoint] 创建墙体:', result.wall?.id, '厚度:', thicknessMm, 'mm', '新节点:', result.node.id);
+    console.log('[addWallPoint] 创建墙体:', result.wall?.id, '厚度:', thicknessMm, 'mm', '新节点:', result.node.id, '吸附到端点:', isSnapToEndpoint);
     
     if (result.wall) {
+      // 如果吸附到已有端点，说明闭合了，结束绘制
+      if (isSnapToEndpoint && snapResult.targetId !== currentNodeId) {
+        console.log('[addWallPoint] 墙体闭合到已有节点，结束绘制');
+        finishWallDrawing();
+        return;
+      }
+      
       // 更新当前节点为新节点
       currentNodeId = result.node.id;
       
@@ -819,6 +896,9 @@ onMounted(async () => {
     const point = canvas!.getScenePoint(opt.e);
     canvas!.zoomToPoint(point, zoom);
     
+    // 重新绘制网格以适应新的视口
+    redrawGrid();
+    
     opt.e.preventDefault();
     opt.e.stopPropagation();
     
@@ -852,6 +932,9 @@ onMounted(async () => {
       lastPosX = evt.clientX;
       lastPosY = evt.clientY;
       canvas!.defaultCursor = 'grabbing';
+      
+      // 重新绘制网格以适应新的视口
+      redrawGrid();
     }
   });
   
@@ -860,6 +943,9 @@ onMounted(async () => {
       isPanning = false;
       canvas!.selection = editorStore.currentTool === 'select';
       canvas!.defaultCursor = editorStore.currentTool === 'select' ? 'default' : 'crosshair';
+      
+      // 平移结束后重新绘制网格
+      redrawGrid();
     }
   });
 
