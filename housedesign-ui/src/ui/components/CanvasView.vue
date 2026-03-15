@@ -63,11 +63,16 @@ const cursorCoordsMm = ref({ x: 0, y: 0 });
 
 // 键盘状态
 const isShiftPressed = ref(false);
+const isCtrlPressed = ref(false);
 
 // 键盘事件处理函数
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Shift') {
     isShiftPressed.value = true;
+  }
+  if (e.key === 'Control' || e.key === 'Meta') {
+    isCtrlPressed.value = true;
+    updateCrosshairVisibility();
   }
 };
 
@@ -75,7 +80,25 @@ const handleKeyUp = (e: KeyboardEvent) => {
   if (e.key === 'Shift') {
     isShiftPressed.value = false;
   }
+  if (e.key === 'Control' || e.key === 'Meta') {
+    isCtrlPressed.value = false;
+    updateCrosshairVisibility();
+  }
 };
+
+// 更新十字准线显示状态
+function updateCrosshairVisibility() {
+  const tool = editorStore.currentTool;
+  
+  // 显示条件：
+  // 1. 绘制工具激活（wall/door/window）
+  // 2. 正在绘制中（currentNodeId 存在）
+  // 3. 按住 Ctrl 键
+  const isDrawingTool = tool === 'wall' || tool === 'door' || tool === 'window';
+  const isDrawing = currentNodeId !== null;
+  
+  crosshairVisible.value = isDrawingTool || isDrawing || isCtrlPressed.value;
+}
 
 // 获取墙体厚度（毫米）
 function getWallThickness(): number {
@@ -303,6 +326,9 @@ function addWallPoint(x: number, y: number) {
       opacity: previewConfig.opacity,
     });
     canvas!.add(tempWallLine);
+    
+    // 开始绘制，更新十字准线状态
+    updateCrosshairVisibility();
   } else {
     // 后续点：创建墙体（使用毫米单位）
     const thicknessMm = getWallThickness();
@@ -691,6 +717,9 @@ function finishWallDrawing() {
   // 重新渲染所有墙体
   renderAllWalls();
   
+  // 更新十字准线状态（结束绘制后根据当前工具决定是否显示）
+  updateCrosshairVisibility();
+  
   canvas!.requestRenderAll();
 }
 
@@ -889,7 +918,7 @@ onMounted(async () => {
   
   // 鼠标进入画布
   canvas.on('mouse:over', () => {
-    crosshairVisible.value = true;
+    updateCrosshairVisibility();
   });
   
   // 鼠标离开画布
@@ -1006,6 +1035,9 @@ watch(
       if (tool !== 'wall' && currentNodeId) {
         finishWallDrawing();
       }
+      
+      // 更新十字准线显示状态
+      updateCrosshairVisibility();
     }
   }
 );
@@ -1067,10 +1099,15 @@ watch(
       </div>
     </div>
     
-    <!-- Shift 键提示 -->
-    <div v-if="isShiftPressed && currentNodeId" class="shift-hint">
+    <!-- 快捷键提示 -->
+    <div v-if="isShiftPressed && currentNodeId" class="key-hint shift-hint">
       <span class="hint-icon">⇅</span>
       <span>按住 Shift 启用角度吸附</span>
+    </div>
+    
+    <div v-if="isCtrlPressed && !currentNodeId" class="key-hint ctrl-hint">
+      <span class="hint-icon">✛</span>
+      <span>Ctrl 显示十字准线</span>
     </div>
     
     <canvas ref="canvasEl"></canvas>
@@ -1275,13 +1312,12 @@ watch(
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* Shift 键提示 */
-.shift-hint {
+/* 快捷键提示 */
+.key-hint {
   position: absolute;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 150, 255, 0.9);
   color: #fff;
   padding: 8px 16px;
   border-radius: 6px;
@@ -1289,12 +1325,21 @@ watch(
   font-weight: 500;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0, 150, 255, 0.4);
   z-index: 1002;
   display: flex;
   align-items: center;
   gap: 8px;
   animation: fadeIn 0.2s ease-in-out;
+}
+
+.shift-hint {
+  background: rgba(0, 150, 255, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 150, 255, 0.4);
+}
+
+.ctrl-hint {
+  background: rgba(255, 107, 0, 0.9);
+  box-shadow: 0 4px 12px rgba(255, 107, 0, 0.4);
 }
 
 .hint-icon {
