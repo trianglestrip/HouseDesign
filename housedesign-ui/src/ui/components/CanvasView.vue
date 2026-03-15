@@ -128,6 +128,16 @@ function updateRulers(width: number, height: number) {
   const gridConfig = renderConfig.value.grid;
   const rulerWidth = rulerConfig.width;
   const scale = renderConfig.value.scale.pixelsPerMeter / 1000; // mm -> px
+  const unit = rulerConfig.unit || 'cm';
+  
+  // 根据单位转换值
+  const convertValue = (valueMm: number): number => {
+    switch (unit) {
+      case 'cm': return Math.round(valueMm / 10);
+      case 'm': return Math.round(valueMm / 1000 * 10) / 10;
+      default: return valueMm; // mm
+    }
+  };
   
   // 计算顶部刻度
   const topMarks = [];
@@ -135,11 +145,12 @@ function updateRulers(width: number, height: number) {
     const x = i * gridConfig.size;
     const isMajor = i % gridConfig.majorInterval === 0;
     const valueMm = Math.round(i * gridConfig.size / scale);
+    const displayValue = convertValue(valueMm);
     
     topMarks.push({
       index: i,
       position: x,
-      value: valueMm.toString(),
+      value: displayValue.toString(),
       isMajor,
     });
   }
@@ -151,11 +162,12 @@ function updateRulers(width: number, height: number) {
     const y = i * gridConfig.size;
     const isMajor = i % gridConfig.majorInterval === 0;
     const valueMm = Math.round(i * gridConfig.size / scale);
+    const displayValue = convertValue(valueMm);
     
     leftMarks.push({
       index: i,
       position: y,
-      value: valueMm.toString(),
+      value: displayValue.toString(),
       isMajor,
     });
   }
@@ -692,12 +704,28 @@ onMounted(async () => {
     crosshairX.value = ev.e.clientX - canvasRect.left;
     crosshairY.value = ev.e.clientY - canvasRect.top;
     
-    // 更新坐标显示（转换为毫米）
+    // 更新坐标显示（根据配置单位转换）
     const scale = renderConfig.value.scale.pixelsPerMeter / 1000;
-    cursorCoordsMm.value = {
+    const unit = renderConfig.value.ruler.unit || 'cm';
+    const valueMm = {
       x: Math.round(point.x / scale),
       y: Math.round(point.y / scale)
     };
+    
+    // 根据单位转换
+    if (unit === 'cm') {
+      cursorCoordsMm.value = {
+        x: Math.round(valueMm.x / 10),
+        y: Math.round(valueMm.y / 10)
+      };
+    } else if (unit === 'm') {
+      cursorCoordsMm.value = {
+        x: Math.round(valueMm.x / 100) / 10,
+        y: Math.round(valueMm.y / 100) / 10
+      };
+    } else {
+      cursorCoordsMm.value = valueMm;
+    }
     
     // 墙体绘制模式：预览线跟随鼠标
     if (editorStore.currentTool === 'wall' && currentNodeId) {
@@ -873,7 +901,7 @@ watch(
           top: (crosshairY + 15) + 'px' 
         }"
       >
-        {{ cursorCoordsMm.x }}, {{ cursorCoordsMm.y }} mm
+        {{ cursorCoordsMm.x }}, {{ cursorCoordsMm.y }} {{ renderConfig.ruler.unit }}
       </div>
     </div>
     

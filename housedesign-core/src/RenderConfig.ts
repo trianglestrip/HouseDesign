@@ -3,10 +3,15 @@
  */
 
 export interface ScaleConfig {
-  pixelsPerMeter: number;  // 1米对应多少像素（例如：5 表示 1m = 5px）
+  pixelsPerMeter: number;  // 1米对应多少像素（例如：20 表示 1m = 20px，即 1cm = 2px）
   minZoom: number;         // 最小缩放倍数
   maxZoom: number;         // 最大缩放倍数
   zoomSpeed: number;       // 缩放速度
+}
+
+export interface CanvasConfig {
+  defaultWidth: number;    // 默认画布宽度（毫米）
+  defaultHeight: number;   // 默认画布高度（毫米）
 }
 
 export interface WallRenderConfig {
@@ -56,10 +61,12 @@ export interface RulerConfig {
   textColor: string;         // 文字颜色
   lineColor: string;         // 刻度线颜色
   fontSize: number;          // 字体大小
+  unit: 'mm' | 'cm' | 'm';   // 显示单位
 }
 
 export interface RenderConfig {
   scale: ScaleConfig;
+  canvas: CanvasConfig;
   wall: WallRenderConfig;
   endpoint: EndpointRenderConfig;
   snapIndicator: SnapIndicatorConfig;
@@ -88,10 +95,14 @@ export interface RenderConfig {
  */
 export const DEFAULT_RENDER_CONFIG: RenderConfig = {
   scale: {
-    pixelsPerMeter: 5,  // 1米 = 5像素，即 200mm墙厚 = 1像素
+    pixelsPerMeter: 20,  // 1米 = 20像素，即 1cm = 2像素
     minZoom: 0.1,
     maxZoom: 20,
     zoomSpeed: 0.001,
+  },
+  canvas: {
+    defaultWidth: 10000,   // 10米 = 10000mm
+    defaultHeight: 10000,  // 10米 = 10000mm
   },
   wall: {
     fillColor: '#d4c4b0',
@@ -135,6 +146,7 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
     textColor: '#333',
     lineColor: '#999',
     fontSize: 10,
+    unit: 'cm',
   },
   door: {
     fillColor: '#c4a35a',
@@ -159,6 +171,7 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
 export function loadRenderConfig(json: Partial<RenderConfig>): RenderConfig {
   return {
     scale: { ...DEFAULT_RENDER_CONFIG.scale, ...json.scale },
+    canvas: { ...DEFAULT_RENDER_CONFIG.canvas, ...json.canvas },
     wall: { ...DEFAULT_RENDER_CONFIG.wall, ...json.wall },
     endpoint: { ...DEFAULT_RENDER_CONFIG.endpoint, ...json.endpoint },
     snapIndicator: { ...DEFAULT_RENDER_CONFIG.snapIndicator, ...json.snapIndicator },

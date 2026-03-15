@@ -1,10 +1,15 @@
 {
   "scale": {
-    "pixelsPerMeter": 5,
+    "pixelsPerMeter": 40,
     "minZoom": 0.1,
     "maxZoom": 20,
     "zoomSpeed": 0.001,
-    "comment": "1米 = 5像素，200mm墙厚 = 1px。滚轮可缩放0.1-20倍"
+    "comment": "1米 = 40像素，即1cm = 2px。适合一般住宅尺寸(10m x 10m)"
+  },
+  "canvas": {
+    "defaultWidth": 10000,
+    "defaultHeight": 10000,
+    "comment": "默认画布 10m x 10m (10000mm)，适合一般住宅房间"
   },
   "wall": {
     "fillColor": "#d4c4b0",
@@ -50,7 +55,8 @@
     "textColor": "#333",
     "lineColor": "#999",
     "fontSize": 10,
-    "comment": "左侧和顶部的刻度尺"
+    "unit": "cm",
+    "comment": "左侧和顶部的刻度尺，单位：厘米"
   },
   "door": {
     "fillColor": "#c4a35a",
