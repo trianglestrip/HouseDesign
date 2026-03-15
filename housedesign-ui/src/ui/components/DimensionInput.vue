@@ -12,18 +12,10 @@
       v-model="inputValue"
       type="text"
       class="dimension-input__field"
-      :placeholder="placeholder"
+      placeholder="长度"
       @keydown.enter="handleConfirm"
       @keydown.esc="handleCancel"
-      @keydown.tab.prevent="handleTab"
-      @blur="handleBlur"
     />
-    <span class="dimension-input__unit">{{ currentUnit }}</span>
-    <div class="dimension-input__hint">
-      <span v-if="mode === 'length'">长度</span>
-      <span v-else>角度</span>
-      <span class="dimension-input__hint-key">Tab切换</span>
-    </div>
   </div>
 </template>
 
@@ -33,35 +25,18 @@ import { ref, watch, nextTick, computed } from 'vue';
 export interface DimensionInputProps {
   visible: boolean;
   position: { x: number; y: number };
-  mode?: 'length' | 'angle';
-  unit?: 'mm' | 'cm' | 'm';
 }
 
 export interface DimensionInputEmits {
-  (e: 'confirm', value: number, mode: 'length' | 'angle'): void;
+  (e: 'confirm', value: number): void;
   (e: 'cancel'): void;
-  (e: 'update:mode', mode: 'length' | 'angle'): void;
 }
 
-const props = withDefaults(defineProps<DimensionInputProps>(), {
-  visible: false,
-  mode: 'length',
-  unit: 'mm',
-});
-
+const props = defineProps<DimensionInputProps>();
 const emit = defineEmits<DimensionInputEmits>();
 
 const inputRef = ref<HTMLInputElement | null>(null);
 const inputValue = ref('');
-const internalMode = ref<'length' | 'angle'>(props.mode);
-
-const currentUnit = computed(() => {
-  return internalMode.value === 'length' ? props.unit : '°';
-});
-
-const placeholder = computed(() => {
-  return internalMode.value === 'length' ? '输入长度' : '输入角度';
-});
 
 // 监听visible变化，自动聚焦
 watch(() => props.visible, (newVal) => {
@@ -75,35 +50,43 @@ watch(() => props.visible, (newVal) => {
   }
 });
 
-// 监听mode变化
-watch(() => props.mode, (newVal) => {
-  internalMode.value = newVal;
-});
+// 监听位置变化，确保焦点保持（但不要选中文本）
+watch(() => props.position, () => {
+  if (props.visible && document.activeElement !== inputRef.value) {
+    // 只在焦点丢失时重新聚焦，但不选中文本
+    nextTick(() => {
+      const currentValue = inputRef.value?.value || '';
+      inputRef.value?.focus();
+      // 恢复光标位置到末尾
+      if (inputRef.value) {
+        inputRef.value.selectionStart = currentValue.length;
+        inputRef.value.selectionEnd = currentValue.length;
+      }
+    });
+  }
+}, { deep: true });
 
-// 解析输入值
+// 解析输入值（默认单位：mm）
 function parseInput(input: string): number | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
 
-  // 移除单位符号
-  const cleaned = trimmed.replace(/[°cmm]/gi, '');
-  const num = parseFloat(cleaned);
+  // 尝试解析数字和单位
+  const match = trimmed.match(/^([\d.]+)(mm|cm|m)?$/i);
+  if (!match) return null;
 
+  const num = parseFloat(match[1]);
   if (isNaN(num)) return null;
 
-  // 根据模式和单位转换为mm（长度）或度（角度）
-  if (internalMode.value === 'length') {
-    // 检测单位
-    if (trimmed.toLowerCase().includes('m') && !trimmed.toLowerCase().includes('mm')) {
-      return num * 1000; // 米转毫米
-    } else if (trimmed.toLowerCase().includes('cm')) {
-      return num * 10; // 厘米转毫米
-    } else {
-      return num; // 默认毫米
-    }
+  const unit = match[2]?.toLowerCase();
+
+  // 统一转换为毫米
+  if (unit === 'm') {
+    return num * 1000; // 米转毫米
+  } else if (unit === 'cm') {
+    return num * 10; // 厘米转毫米
   } else {
-    // 角度直接返回
-    return num;
+    return num; // 默认毫米
   }
 }
 
@@ -111,7 +94,7 @@ function parseInput(input: string): number | null {
 function handleConfirm() {
   const value = parseInput(inputValue.value);
   if (value !== null) {
-    emit('confirm', value, internalMode.value);
+    emit('confirm', value);
     inputValue.value = '';
   }
 }
@@ -122,73 +105,40 @@ function handleCancel() {
   inputValue.value = '';
 }
 
-// Tab切换模式
-function handleTab() {
-  internalMode.value = internalMode.value === 'length' ? 'angle' : 'length';
-  emit('update:mode', internalMode.value);
-  inputValue.value = '';
-}
-
-// 失去焦点时取消（可选）
-function handleBlur() {
-  // 延迟取消，避免点击确认按钮时立即取消
-  setTimeout(() => {
-    if (props.visible) {
-      handleCancel();
-    }
-  }, 200);
-}
+// 注意：移除了 @blur 自动取消功能
+// 原因：在某些情况下（如自动化测试、快速点击），输入框会立即失焦并被取消
+// 用户可以通过 Esc 键或点击画布其他位置来显式取消
 </script>
 
 <style scoped>
 .dimension-input {
   position: fixed;
   z-index: 10000;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: white;
-  border: 2px solid #409eff;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  padding: 2px 4px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #409eff;
+  border-radius: 2px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
   pointer-events: all;
+  transform: translate(-50%, -50%);
 }
 
 .dimension-input__field {
-  width: 100px;
-  padding: 4px 8px;
-  border: 1px solid #dcdfe6;
-  border-radius: 3px;
-  font-size: 14px;
+  width: 50px;
+  padding: 2px 4px;
+  border: none;
+  font-size: 12px;
   outline: none;
-  transition: border-color 0.2s;
-}
-
-.dimension-input__field:focus {
-  border-color: #409eff;
+  background: transparent;
+  text-align: center;
+  font-family: 'Consolas', 'Monaco', monospace;
 }
 
 .dimension-input__unit {
-  font-size: 12px;
+  font-size: 11px;
   color: #909399;
   font-weight: 500;
   min-width: 20px;
 }
 
-.dimension-input__hint {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
-  color: #909399;
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid #dcdfe6;
-}
-
-.dimension-input__hint-key {
-  color: #409eff;
-  font-weight: 500;
-}
 </style>

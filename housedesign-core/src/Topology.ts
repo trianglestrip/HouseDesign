@@ -297,6 +297,20 @@ export class TopologyGraph {
     return edge;
   }
 
+  /**
+   * 查找两个节点之间是否已存在边（双向检查）
+   */
+  findEdgeBetweenNodes(nodeAId: string, nodeBId: string): Edge | null {
+    for (const edge of this.edges.values()) {
+      // 检查正向和反向
+      if ((edge.nodeA === nodeAId && edge.nodeB === nodeBId) ||
+          (edge.nodeA === nodeBId && edge.nodeB === nodeAId)) {
+        return edge;
+      }
+    }
+    return null;
+  }
+
   deleteEdge(edgeId: string): void {
     const edge = this.edges.get(edgeId);
     if (!edge) return;

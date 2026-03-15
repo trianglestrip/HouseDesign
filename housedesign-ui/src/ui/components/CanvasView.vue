@@ -57,6 +57,8 @@ let wallEndpoints: Map<string, fabric.Circle> = new Map(); // 墙体端点控制
 let dimensionLine: fabric.Line | null = null; // 尺寸标注线
 let dimensionText: fabric.Text | null = null; // 尺寸文字
 let gridLines: FabricObject[] = []; // 网格线对象数组
+let snappedAngle: number | null = null; // 保存角度吸附后的精确角度（弧度），一旦吸附就锁定
+let lastPreviewAngle: number | null = null; // 上一次预览线的角度（用于回退）
 
 // 渲染循环标志
 let needRedrawGrid = false; // 是否需要重绘网格
@@ -80,9 +82,10 @@ const isCtrlPressed = ref(false);
 // 数值输入框状态
 const dimensionInputVisible = ref(false);
 const dimensionInputPosition = ref({ x: 0, y: 0 });
-const dimensionInputMode = ref<'length' | 'angle'>('length');
+
+// 鼠标样式控制（吸附时隐藏鼠标）
+const hideCursor = ref(false);
 let lockedLength: number | null = null;
-let lockedAngle: number | null = null;
 
 // 键盘事件处理函数（仅处理修饰键状态）
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -120,41 +123,100 @@ function updateCrosshairVisibility() {
 }
 
 // 处理数值输入确认
-function handleDimensionConfirm(value: number, mode: 'length' | 'angle') {
-  console.log('[数值输入] 确认:', value, mode);
+function handleDimensionConfirm(value: number) {
+  console.log('[数值输入] 确认长度:', value, 'mm');
   
-  if (mode === 'length') {
-    lockedLength = value; // 锁定长度（单位：mm）
-  } else {
-    lockedAngle = value; // 锁定角度（单位：度）
-  }
-  
+  lockedLength = value; // 锁定长度（单位：mm）
   dimensionInputVisible.value = false;
   
-  // 如果正在绘制墙体，应用锁定的值
+  // 如果正在绘制墙体，立即确定第二个点
   if (currentNodeId && tempWallLine) {
-    // 重新计算预览线位置
+    const scale = renderConfig.value.scale.pixelsPerMeter / 1000;
+    
+    // 计算当前方向和锁定长度下的终点位置
     const currentNode = geometryKernel.getTopology().getNode(currentNodeId);
     if (currentNode) {
-      const scale = renderConfig.value.scale.pixelsPerMeter / 1000;
+      // 从预览线获取当前方向
+      const currentX = tempWallLine.x2!;
+      const currentY = tempWallLine.y2!;
+      const startX = currentNode.position.x * scale;
+      const startY = currentNode.position.y * scale;
       
-      if (lockedLength && lockedAngle !== null) {
-        // 同时锁定长度和角度
-        const angleRad = (lockedAngle * Math.PI) / 180;
-        const endPosMm = {
-          x: currentNode.position.x + lockedLength * Math.cos(angleRad),
-          y: currentNode.position.y + lockedLength * Math.sin(angleRad),
-        };
-        const endPosPx = {
-          x: endPosMm.x * scale,
-          y: endPosMm.y * scale,
-        };
-        tempWallLine.set({
-          x2: endPosPx.x,
-          y2: endPosPx.y,
-        });
-        canvas!.requestRenderAll();
+      const dx = currentX - startX;
+      const dy = currentY - startY;
+      let currentAngle = Math.atan2(dy, dx);
+      const angleDeg = currentAngle * (180 / Math.PI);
+      const absAngleDeg = Math.abs(angleDeg);
+      
+      // 如果角度接近水平/垂直（在阈值内），强制使用精确角度
+      const angleThreshold = renderConfig.value.snap.angleThreshold;
+      if (absAngleDeg < angleThreshold || absAngleDeg > 180 - angleThreshold) {
+        // 强制水平（0° 或 180°）
+        currentAngle = angleDeg > 0 ? Math.PI : 0;
+      } else if (Math.abs(absAngleDeg - 90) < angleThreshold) {
+        // 强制垂直（根据原始角度判断方向）
+        currentAngle = angleDeg > 0 ? Math.PI / 2 : -Math.PI / 2;
       }
+      
+      // 计算锁定长度的终点（毫米）
+      let endPosMm = {
+        x: currentNode.position.x + lockedLength * Math.cos(currentAngle),
+        y: currentNode.position.y + lockedLength * Math.sin(currentAngle),
+      };
+      
+      // 检查是否应该吸附到已有节点（闭合回路）
+      const snapResult = geometryKernel.findSnap(endPosMm, currentNodeId);
+      
+      if (snapResult && snapResult.type === SnapType.Endpoint) {
+        console.log('[数值输入] 吸附到节点:', snapResult.targetId);
+        endPosMm = snapResult.position;
+      }
+      
+      // 自动确定这个点（相当于点击）
+      const thicknessMm = getWallThickness();
+      const result = geometryKernel.addWallPoint(endPosMm, currentNodeId, thicknessMm);
+      
+      // 清除预览线
+      if (tempWallLine) {
+        canvas!.remove(tempWallLine);
+        tempWallLine = null;
+      }
+      
+      // 重新渲染
+      renderAllWalls();
+      
+      // 更新当前节点为新创建的节点，准备继续绘制
+      currentNodeId = result.node.id;
+      
+      // 显示新的输入框，准备下一段（在新起点位置，等待鼠标移动后更新到中点）
+      const canvasRect = canvasEl.value!.getBoundingClientRect();
+      const endPosPx = {
+        x: endPosMm.x * scale,
+        y: endPosMm.y * scale,
+      };
+      showDimensionInput(
+        endPosPx.x + canvasRect.left, 
+        endPosPx.y + canvasRect.top,
+        endPosPx.x + canvasRect.left,
+        endPosPx.y + canvasRect.top
+      );
+      
+      // 创建新的预览线
+      tempWallLine = new fabric.Line([endPosPx.x, endPosPx.y, endPosPx.x, endPosPx.y], {
+        stroke: renderConfig.value.previewLine.strokeColor,
+        strokeWidth: renderConfig.value.previewLine.strokeWidth,
+        strokeDashArray: renderConfig.value.previewLine.strokeDashArray,
+        selectable: false,
+        evented: false,
+      });
+      canvas!.add(tempWallLine);
+      
+      // 重置锁定长度和吸附角度
+      lockedLength = null;
+      snappedAngle = null;
+      
+      // 更新十字准线状态
+      updateCrosshairVisibility();
     }
   }
 }
@@ -164,14 +226,21 @@ function handleDimensionCancel() {
   console.log('[数值输入] 取消');
   dimensionInputVisible.value = false;
   lockedLength = null;
-  lockedAngle = null;
 }
 
-// 显示数值输入框
-function showDimensionInput(x: number, y: number) {
-  dimensionInputPosition.value = { x: x + 20, y: y + 20 };
+// 显示数值输入框（在起点和终点中间）
+function showDimensionInput(x: number, y: number, startX?: number, startY?: number) {
+  if (startX !== undefined && startY !== undefined) {
+    // 计算中点位置
+    dimensionInputPosition.value = {
+      x: (startX + x) / 2,
+      y: (startY + y) / 2,
+    };
+  } else {
+    // 如果没有起点，显示在当前位置旁边
+    dimensionInputPosition.value = { x: x + 20, y: y + 20 };
+  }
   dimensionInputVisible.value = true;
-  dimensionInputMode.value = 'length';
 }
 
 // 导出场景到JSON文件
@@ -690,9 +759,14 @@ function addWallPoint(x: number, y: number) {
     });
     canvas!.add(tempWallLine);
     
-    // 显示数值输入框
+    // 显示数值输入框（在起点和鼠标位置中间）
     const canvasRect = canvasEl.value!.getBoundingClientRect();
-    showDimensionInput(x + canvasRect.left, y + canvasRect.top);
+    showDimensionInput(
+      x + canvasRect.left, 
+      y + canvasRect.top,
+      x + canvasRect.left,  // 起点就是当前点击位置
+      y + canvasRect.top
+    );
     
     // 开始绘制，更新十字准线状态
     updateCrosshairVisibility();
@@ -756,6 +830,7 @@ function renderAllWalls() {
   
   // 渲染每个墙体
   const wallConfig = renderConfig.value.wall;
+  const previewConfig = renderConfig.value.previewLine;
   const scale = renderConfig.value.scale.pixelsPerMeter / 1000; // mm -> px 的转换比例
   
   wallPolygons.forEach((meshData, wallId) => {
@@ -781,6 +856,29 @@ function renderAllWalls() {
     
     (polygon as any).data = { type: 'wall', wallId };
     canvas!.add(polygon);
+    
+    // 如果配置了显示中心线，绘制中心线（用于调试）
+    if (previewConfig.showCenterLine && meshData.centerLine) {
+      const centerLinePixels = meshData.centerLine.map(p => ({
+        x: p.x * scale,
+        y: p.y * scale,
+      }));
+      
+      const centerLine = new fabric.Line(
+        [centerLinePixels[0].x, centerLinePixels[0].y, centerLinePixels[1].x, centerLinePixels[1].y],
+        {
+          stroke: '#ff0000',
+          strokeWidth: 1,
+          strokeDashArray: [5, 5],
+          selectable: false,
+          evented: false,
+          opacity: 0.5,
+        }
+      );
+      
+      (centerLine as any).data = { type: 'centerline', wallId };
+      canvas!.add(centerLine);
+    }
   });
   
   // 确保网格线在最底层
@@ -926,7 +1024,7 @@ function renderEndpoints() {
 }
 
 // 更新预览线位置
-function updateWallPreview(x: number, y: number) {
+function updateWallPreview(x: number, y: number, screenX?: number, screenY?: number) {
   if (!currentNodeId || !tempWallLine) return;
   
   // 像素转毫米
@@ -941,19 +1039,15 @@ function updateWallPreview(x: number, y: number) {
   const currentNode = topology.getNode(currentNodeId);
   if (!currentNode) return;
   
-  // 如果锁定了长度或角度，应用约束
-  if (lockedLength !== null || lockedAngle !== null) {
+  // 如果锁定了长度，应用约束
+  if (lockedLength !== null) {
     const dx = positionMm.x - currentNode.position.x;
     const dy = positionMm.y - currentNode.position.y;
-    const currentLength = Math.sqrt(dx * dx + dy * dy);
     const currentAngle = Math.atan2(dy, dx);
     
-    let finalLength = lockedLength !== null ? lockedLength : currentLength;
-    let finalAngle = lockedAngle !== null ? (lockedAngle * Math.PI / 180) : currentAngle;
-    
     positionMm = {
-      x: currentNode.position.x + finalLength * Math.cos(finalAngle),
-      y: currentNode.position.y + finalLength * Math.sin(finalAngle),
+      x: currentNode.position.x + lockedLength * Math.cos(currentAngle),
+      y: currentNode.position.y + lockedLength * Math.sin(currentAngle),
     };
   }
   
@@ -967,18 +1061,22 @@ function updateWallPreview(x: number, y: number) {
     
     // 1. 角度吸附：接近水平/垂直时自动对齐
     if (absAngle < snapConfig.angleThreshold || absAngle > 180 - snapConfig.angleThreshold) {
-      // 吸附到水平
+      // 吸附到水平（0° 或 180°）
       positionMm.y = currentNode.position.y;
-      console.log('[角度吸附] 水平', angle.toFixed(1), '°');
+      snappedAngle = angle > 0 ? Math.PI : 0; // 保存精确角度
+      console.log('[角度吸附] 水平', angle.toFixed(1), '° - 锁定为', (snappedAngle * 180 / Math.PI).toFixed(0), '°');
     } else if (Math.abs(absAngle - 90) < snapConfig.angleThreshold) {
       // 吸附到垂直（90°）
       positionMm.x = currentNode.position.x;
-      console.log('[角度吸附] 垂直', angle.toFixed(1), '°');
+      snappedAngle = Math.PI / 2; // 精确90度
+      console.log('[角度吸附] 垂直', angle.toFixed(1), '° - 锁定为90°');
     } else if (Math.abs(absAngle + 90) < snapConfig.angleThreshold) {
       // 吸附到垂直（-90°）
       positionMm.x = currentNode.position.x;
-      console.log('[角度吸附] 垂直', angle.toFixed(1), '°');
+      snappedAngle = -Math.PI / 2; // 精确-90度
+      console.log('[角度吸附] 垂直', angle.toFixed(1), '° - 锁定为-90°');
     }
+    // 注意：一旦角度吸附生效，snappedAngle 会保持锁定，直到下一次点击确认
     
     // 2. 长度增量吸附：按 5cm 增量吸附
     const newDx = positionMm.x - currentNode.position.x;
@@ -1016,6 +1114,17 @@ function updateWallPreview(x: number, y: number) {
         break;
       }
     }
+  } else if (snappedAngle !== null) {
+    // Shift松开后，如果之前有角度吸附，继续使用锁定的角度
+    const length = Math.sqrt(
+      (positionMm.x - currentNode.position.x) ** 2 +
+      (positionMm.y - currentNode.position.y) ** 2
+    );
+    positionMm = {
+      x: currentNode.position.x + length * Math.cos(snappedAngle),
+      y: currentNode.position.y + length * Math.sin(snappedAngle),
+    };
+    console.log('[角度锁定] 保持', (snappedAngle * 180 / Math.PI).toFixed(0), '°');
   }
   
   // 使用GeometryKernel的吸附系统（毫米单位）
@@ -1048,8 +1157,16 @@ function updateWallPreview(x: number, y: number) {
       top: finalPosPx.y - snapConfig.radius,
       visible: true,
     });
-  } else if (snapIndicator) {
-    snapIndicator.set({ visible: false });
+    
+    // 端点吸附时隐藏鼠标（避免遮挡）
+    if (snapResult.type === SnapType.Endpoint) {
+      hideCursor.value = true;
+    }
+  } else {
+    if (snapIndicator) {
+      snapIndicator.set({ visible: false });
+    }
+    hideCursor.value = false;
   }
   
   // 转换为像素显示
@@ -1064,6 +1181,18 @@ function updateWallPreview(x: number, y: number) {
     x2: finalPosPx.x,
     y2: finalPosPx.y,
   });
+  
+  // 如果数值输入框可见，更新其位置到中点（使用屏幕坐标）
+  if (dimensionInputVisible.value && screenX !== undefined && screenY !== undefined) {
+    const canvasRect = canvasEl.value!.getBoundingClientRect();
+    const startScreenX = startPx.x + canvasRect.left;
+    const startScreenY = startPx.y + canvasRect.top;
+    
+    const midX = (startScreenX + screenX) / 2;
+    const midY = (startScreenY + screenY) / 2;
+    
+    dimensionInputPosition.value = { x: midX, y: midY };
+  }
   
   // 绘制尺寸标注（根据配置决定是否显示）
   const dimConfig = renderConfig.value.dimension;
@@ -1193,7 +1322,6 @@ function finishWallDrawing() {
   // 重置状态
   currentNodeId = null;
   lockedLength = null;
-  lockedAngle = null;
   dimensionInputVisible.value = false;
   
   // 触发房间检测
@@ -1254,6 +1382,9 @@ onMounted(async () => {
     backgroundColor: '#ffffff',
     selection: editorStore.currentTool === 'select',
   });
+  
+  // 导出到window供调试/测试使用
+  (window as any).fabricCanvas = canvas;
   
   // 启用滚轮缩放
   canvas.on('mouse:wheel', (opt) => {
@@ -1413,7 +1544,7 @@ onMounted(async () => {
     
     // 墙体绘制模式：预览线跟随鼠标
     if (editorStore.currentTool === 'wall' && currentNodeId) {
-      updateWallPreview(point.x, point.y);
+      updateWallPreview(point.x, point.y, mouseEvent.clientX, mouseEvent.clientY);
     }
   });
   
@@ -1577,9 +1708,9 @@ watch(
     <!-- 左上角方块 -->
     <div class="ruler-corner"></div>
     
-    <!-- 十字准线 -->
+    <!-- 十字准线（吸附时隐藏） -->
     <div 
-      v-if="crosshairVisible" 
+      v-if="crosshairVisible && !hideCursor" 
       class="crosshair"
       :style="{ '--cursor-x': crosshairX + 'px', '--cursor-y': crosshairY + 'px' }"
     >
@@ -1613,14 +1744,11 @@ watch(
     <DimensionInput
       :visible="dimensionInputVisible"
       :position="dimensionInputPosition"
-      :mode="dimensionInputMode"
-      :unit="renderConfig.ruler.unit"
       @confirm="handleDimensionConfirm"
       @cancel="handleDimensionCancel"
-      @update:mode="dimensionInputMode = $event"
     />
     
-    <canvas ref="canvasEl"></canvas>
+    <canvas ref="canvasEl" :class="{ 'hide-cursor': hideCursor }"></canvas>
   </div>
 </template>
 
@@ -1636,6 +1764,10 @@ watch(
 .canvas-view canvas {
   display: block;
   cursor: none;
+}
+
+.canvas-view canvas.hide-cursor {
+  cursor: none !important;
 }
 
 /* 刻度尺样式 - 固定在视口边缘 */

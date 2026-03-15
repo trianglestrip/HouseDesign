@@ -191,6 +191,20 @@ export class GeometryKernel {
 
     // 如果有前一个节点，创建边和墙体
     if (prevNodeId) {
+      // 检查是否已存在边（避免重复创建）
+      const existingEdge = this.topology.findEdgeBetweenNodes(prevNodeId, node.id);
+      
+      if (existingEdge) {
+        console.warn('[addWallPoint] 节点之间已存在边，跳过创建:', prevNodeId, '->', node.id);
+        return { node };
+      }
+      
+      // 避免创建自环边
+      if (prevNodeId === node.id) {
+        console.warn('[addWallPoint] 不能创建自环边:', prevNodeId);
+        return { node };
+      }
+      
       const edge = this.topology.createEdge(prevNodeId, node.id);
 
       const wallId = `wall_${this.nextWallId++}`;
