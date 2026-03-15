@@ -12,6 +12,7 @@ import {
   SnapType,
 } from '@housedesign/core';
 import { useEditorStore } from '../stores/editorStore';
+import { useShortcuts } from '../composables/useShortcuts';
 import { Canvas, Rect } from 'fabric';
 import * as fabric from 'fabric';
 import type { FabricObject } from 'fabric';
@@ -31,10 +32,14 @@ let renderConfig = ref<RenderConfig>(DEFAULT_RENDER_CONFIG);
 // 几何内核（用于墙体拓扑管理）
 const geometryKernel = new GeometryKernel();
 
+// 快捷键系统
+const shortcuts = useShortcuts(ref(canvas), geometryKernel);
+
 // 调试：暴露到 window 对象
 if (typeof window !== 'undefined') {
   (window as any).geometryKernel = geometryKernel;
   (window as any).renderConfig = renderConfig;
+  (window as any).shortcuts = shortcuts;
   (window as any).debugWalls = () => {
     console.log('=== 墙体数据 ===');
     console.log('Walls:', geometryKernel.getWalls());
@@ -72,41 +77,14 @@ const cursorCoordsMm = ref({ x: 0, y: 0 });
 const isShiftPressed = ref(false);
 const isCtrlPressed = ref(false);
 
-// 键盘事件处理函数
+// 键盘事件处理函数（仅处理修饰键状态）
 const handleKeyDown = (e: KeyboardEvent) => {
-  // 检查是否在输入框中
-  const target = e.target as HTMLElement;
-  const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-  
   if (e.key === 'Shift') {
     isShiftPressed.value = true;
   }
   if (e.key === 'Control' || e.key === 'Meta') {
     isCtrlPressed.value = true;
     updateCrosshairVisibility();
-  }
-  
-  // 撤销/重做快捷键（不在输入框时）
-  if (!isInputFocused) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-      e.preventDefault();
-      const success = geometryKernel.undo();
-      if (success) {
-        console.log('[撤销] 操作已撤销');
-        renderAllWalls();
-        // 更新editorStore状态
-        editorStore.setUndoRedoState(geometryKernel.canUndo(), geometryKernel.canRedo());
-      }
-    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-      e.preventDefault();
-      const success = geometryKernel.redo();
-      if (success) {
-        console.log('[重做] 操作已重做');
-        renderAllWalls();
-        // 更新editorStore状态
-        editorStore.setUndoRedoState(geometryKernel.canUndo(), geometryKernel.canRedo());
-      }
-    }
   }
 };
 
@@ -132,6 +110,56 @@ function updateCrosshairVisibility() {
   const isDrawing = currentNodeId !== null;
   
   crosshairVisible.value = isDrawingTool || isDrawing || isCtrlPressed.value;
+}
+
+// 注册常用快捷键
+function registerCommonShortcuts() {
+  // Ctrl+Z: 撤销
+  shortcuts.registerShortcut('z', () => {
+    const success = geometryKernel.undo();
+    if (success) {
+      console.log('[撤销] 操作已撤销');
+      renderAllWalls();
+      editorStore.setUndoRedoState(geometryKernel.canUndo(), geometryKernel.canRedo());
+    }
+    return false; // 阻止默认行为
+  }, { ctrl: true, preventDefault: true });
+
+  // Ctrl+Y 或 Ctrl+Shift+Z: 重做
+  shortcuts.registerShortcut('y', () => {
+    const success = geometryKernel.redo();
+    if (success) {
+      console.log('[重做] 操作已重做');
+      renderAllWalls();
+      editorStore.setUndoRedoState(geometryKernel.canUndo(), geometryKernel.canRedo());
+    }
+    return false;
+  }, { ctrl: true, preventDefault: true });
+
+  // Escape: 取消当前操作
+  shortcuts.registerShortcut('Escape', () => {
+    if (currentNodeId) {
+      finishWallDrawing();
+      console.log('[快捷键] Escape - 取消绘制');
+    }
+    return false;
+  }, { preventDefault: true });
+
+  // L: 切换到墙体工具
+  shortcuts.registerShortcut('l', () => {
+    editorStore.setCurrentTool('wall');
+    console.log('[快捷键] L - 墙体工具');
+    return false;
+  }, { preventDefault: true });
+
+  // Space: 切换到选择工具
+  shortcuts.registerShortcut(' ', () => {
+    editorStore.setCurrentTool('select');
+    console.log('[快捷键] Space - 选择工具');
+    return false;
+  }, { preventDefault: true });
+
+  console.log('[快捷键] 已注册常用快捷键:', shortcuts.getRegisteredShortcuts());
 }
 
 // 获取墙体厚度（毫米）
@@ -996,6 +1024,9 @@ onMounted(async () => {
 
   // 加载渲染配置
   await loadRenderConfig();
+  
+  // 注册快捷键
+  registerCommonShortcuts();
 
   const container = canvasContainer.value;
   const width = container.clientWidth;
