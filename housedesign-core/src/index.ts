@@ -33,6 +33,9 @@ export * as TrimExtend from './geometry/TrimExtend';
 // ============ Snap系统 ============
 export { SnapSystem, SnapType, type SnapResult } from './Snap';
 
+// ============ 辅助线系统 ============
+export { AuxiliaryLineManager, AuxiliaryLineType, type AuxiliaryLine } from './AuxiliaryLines';
+
 // ============ 约束系统 ============
 export {
   Constraint,

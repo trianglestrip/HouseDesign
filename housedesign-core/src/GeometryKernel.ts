@@ -11,8 +11,9 @@
 
 import { TopologyGraph, type Node, type Edge } from './Topology';
 import { Wall, Opening, OpeningType, Room } from './Semantic';
-import { SnapSystem, type SnapResult } from './Snap';
+import { SnapSystem, SnapType, type SnapResult } from './Snap';
 import { UndoRedoManager } from './UndoRedo';
+import { AuxiliaryLineManager } from './AuxiliaryLines';
 import type { Vec2 } from './geometry/Vec2';
 import * as Vec2Math from './geometry/Vec2';
 import { generateWallMesh } from './geometry/WallMesh';
@@ -25,6 +26,7 @@ export class GeometryKernel {
   private rooms: Map<string, Room> = new Map();
   private snapSystem: SnapSystem;
   private undoRedoManager: UndoRedoManager;
+  private auxiliaryLineManager: AuxiliaryLineManager;
   private autoTrimExtend: boolean = false; // 自动修剪/延伸开关
 
   private nextWallId = 0;
@@ -35,6 +37,14 @@ export class GeometryKernel {
     this.topology = new TopologyGraph();
     this.snapSystem = new SnapSystem(15, 100);
     this.undoRedoManager = new UndoRedoManager({ maxHistorySize: 100 });
+    this.auxiliaryLineManager = new AuxiliaryLineManager();
+  }
+
+  /**
+   * 获取辅助线管理器
+   */
+  getAuxiliaryLineManager(): AuxiliaryLineManager {
+    return this.auxiliaryLineManager;
   }
 
   /**
@@ -179,6 +189,22 @@ export class GeometryKernel {
     nodes.forEach((node) => {
       nodePositions.set(node.id, node.position);
     });
+
+    // 先检查辅助线吸附（优先级高于网格）
+    const auxSnap = this.auxiliaryLineManager.snapToLine(position, 20);
+    if (auxSnap) {
+      // 辅助线吸附成功，但仍然检查端点吸附（端点优先级最高）
+      const endpointSnap = this.snapSystem.findBestSnap(auxSnap, nodes, edges, nodePositions, excludeNodeId);
+      if (endpointSnap) {
+        return endpointSnap;
+      }
+      // 返回辅助线吸附结果（使用Grid类型，优先级介于端点和网格之间）
+      return {
+        position: auxSnap,
+        type: SnapType.Grid,
+        priority: 50, // 介于端点(100)和网格(10)之间
+      };
+    }
 
     return this.snapSystem.findBestSnap(position, nodes, edges, nodePositions, excludeNodeId);
   }
