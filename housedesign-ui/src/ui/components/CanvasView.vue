@@ -59,6 +59,22 @@ const crosshairX = ref(0);
 const crosshairY = ref(0);
 const cursorCoordsMm = ref({ x: 0, y: 0 });
 
+// 键盘状态
+const isShiftPressed = ref(false);
+
+// 键盘事件处理函数
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'Shift') {
+    isShiftPressed.value = true;
+  }
+};
+
+const handleKeyUp = (e: KeyboardEvent) => {
+  if (e.key === 'Shift') {
+    isShiftPressed.value = false;
+  }
+};
+
 // 获取墙体厚度（毫米）
 function getWallThickness(): number {
   return renderConfig.value.wall.defaultThickness;
@@ -455,10 +471,42 @@ function updateWallPreview(x: number, y: number) {
   
   // 像素转毫米
   const scale = renderConfig.value.scale.pixelsPerMeter / 1000;
-  const positionMm: Vec2 = { 
+  let positionMm: Vec2 = { 
     x: x / scale, 
     y: y / scale,
   };
+  
+  // 获取当前节点位置
+  const topology = geometryKernel.getTopology();
+  const currentNode = topology.getNode(currentNodeId);
+  if (!currentNode) return;
+  
+  // Shift 键角度吸附（优先级最高）
+  if (isShiftPressed.value) {
+    const dx = positionMm.x - currentNode.position.x;
+    const dy = positionMm.y - currentNode.position.y;
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    
+    // 从配置读取吸附角度阈值
+    const snapAngle = renderConfig.value.snapIndicator.angleSnapThreshold || 15;
+    
+    // 检测是否接近水平（0°, 180°）或垂直（90°, -90°）
+    const absAngle = Math.abs(angle);
+    
+    if (absAngle < snapAngle || absAngle > 180 - snapAngle) {
+      // 吸附到水平
+      positionMm.y = currentNode.position.y;
+      console.log('[角度吸附] 水平', angle.toFixed(1), '°');
+    } else if (Math.abs(absAngle - 90) < snapAngle) {
+      // 吸附到垂直（90°）
+      positionMm.x = currentNode.position.x;
+      console.log('[角度吸附] 垂直', angle.toFixed(1), '°');
+    } else if (Math.abs(absAngle + 90) < snapAngle) {
+      // 吸附到垂直（-90°）
+      positionMm.x = currentNode.position.x;
+      console.log('[角度吸附] 垂直', angle.toFixed(1), '°');
+    }
+  }
   
   // 使用GeometryKernel的吸附系统（毫米单位）
   const snapResult = geometryKernel.findSnap(positionMm, currentNodeId);
@@ -494,22 +542,18 @@ function updateWallPreview(x: number, y: number) {
     snapIndicator.set({ visible: false });
   }
   
-  // 获取当前节点位置（毫米）并转换为像素
-  const topology = geometryKernel.getTopology();
-  const currentNode = topology.getNode(currentNodeId);
-  if (currentNode) {
-    const startPx = {
-      x: currentNode.position.x * scale,
-      y: currentNode.position.y * scale,
-    };
-    
-    tempWallLine.set({
-      x1: startPx.x,
-      y1: startPx.y,
-      x2: finalPosPx.x,
-      y2: finalPosPx.y,
-    });
-  }
+  // 转换为像素显示
+  const startPx = {
+    x: currentNode.position.x * scale,
+    y: currentNode.position.y * scale,
+  };
+  
+  tempWallLine.set({
+    x1: startPx.x,
+    y1: startPx.y,
+    x2: finalPosPx.x,
+    y2: finalPosPx.y,
+  });
   
   canvas!.requestRenderAll();
 }
@@ -608,15 +652,15 @@ onMounted(async () => {
     console.log('[缩放] 当前缩放级别:', zoom.toFixed(2));
   });
   
-  // 启用空格+拖动 或 中键拖动 平移画布
+  // 启用中键拖动平移画布（Shift键用于角度吸附，不再用于平移）
   let isPanning = false;
   let lastPosX = 0;
   let lastPosY = 0;
   
   canvas.on('mouse:down', (opt) => {
     const evt = opt.e as MouseEvent;
-    // 中键或空格+左键开始平移
-    if (evt.button === 1 || (evt.button === 0 && evt.shiftKey)) {
+    // 仅中键开始平移
+    if (evt.button === 1) {
       isPanning = true;
       lastPosX = evt.clientX;
       lastPosY = evt.clientY;
@@ -665,8 +709,8 @@ onMounted(async () => {
   canvas.on('mouse:down', (ev) => {
     const mouseEvent = ev.e as MouseEvent;
     
-    // 中键或Shift+左键：已在上面的平移逻辑中处理
-    if (mouseEvent.button === 1 || (mouseEvent.button === 0 && mouseEvent.shiftKey)) {
+    // 中键：已在上面的平移逻辑中处理
+    if (mouseEvent.button === 1) {
       return;
     }
     
@@ -742,6 +786,10 @@ onMounted(async () => {
   canvas.on('mouse:out', () => {
     crosshairVisible.value = false;
   });
+  
+  // 注册键盘事件监听
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
   
   // 右键结束绘制
   canvasEl.value.addEventListener('contextmenu', (e) => {
@@ -831,6 +879,10 @@ onUnmounted(() => {
   canvas?.dispose();
   canvas = null;
   idToFabricObject.clear();
+  
+  // 清理键盘事件监听
+  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('keyup', handleKeyUp);
 });
 
 watch(
@@ -903,6 +955,12 @@ watch(
       >
         {{ cursorCoordsMm.x }}, {{ cursorCoordsMm.y }} {{ renderConfig.ruler.unit }}
       </div>
+    </div>
+    
+    <!-- Shift 键提示 -->
+    <div v-if="isShiftPressed && currentNodeId" class="shift-hint">
+      <span class="hint-icon">⇅</span>
+      <span>按住 Shift 启用角度吸附</span>
     </div>
     
     <canvas ref="canvasEl"></canvas>
@@ -1105,5 +1163,43 @@ watch(
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Shift 键提示 */
+.shift-hint {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 150, 255, 0.9);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 150, 255, 0.4);
+  z-index: 1002;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.hint-icon {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 </style>

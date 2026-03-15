@@ -32,7 +32,9 @@
     "fillColor": "#409EFF",
     "strokeColor": "#fff",
     "strokeWidth": 2,
-    "opacity": 0.8
+    "opacity": 0.8,
+    "angleSnapThreshold": 15,
+    "comment": "按住Shift时，角度在15度范围内吸附到水平/垂直"
   },
   "previewLine": {
     "strokeColor": "#409EFF",

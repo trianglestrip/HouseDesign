@@ -37,6 +37,7 @@ export interface SnapIndicatorConfig {
   strokeColor: string;
   strokeWidth: number;
   opacity: number;
+  angleSnapThreshold: number;  // 角度吸附阈值（度）
 }
 
 export interface PreviewLineConfig {
@@ -125,6 +126,7 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
     strokeColor: '#fff',
     strokeWidth: 2,
     opacity: 0.8,
+    angleSnapThreshold: 15,
   },
   previewLine: {
     strokeColor: '#409EFF',
