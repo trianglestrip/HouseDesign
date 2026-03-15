@@ -50,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { ElButton } from 'element-plus';
 import { View, Hide, Lock, Unlock, Delete } from '@element-plus/icons-vue';
 import type { AuxiliaryLine, AuxiliaryLineManager } from '@housedesign/core';

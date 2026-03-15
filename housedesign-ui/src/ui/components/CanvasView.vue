@@ -8,7 +8,6 @@ import {
   type Vec2,
   DEFAULT_RENDER_CONFIG,
   type RenderConfig,
-  mmToPixels,
   SnapType,
 } from '@housedesign/core';
 import { useEditorStore } from '../stores/editorStore';
@@ -807,7 +806,8 @@ function updateEndpointPositions() {
   // 更新现有端点位置
   topology.getNodes().forEach(node => {
     const circle = wallEndpoints.get(node.id);
-    if (circle && !canvas!.getActiveObject()?.equals(circle)) {
+    const activeObject = canvas!.getActiveObject();
+    if (circle && activeObject !== circle) {
       // 只更新非拖动中的端点
       const posPx = {
         x: node.position.x * scale,
@@ -1384,8 +1384,9 @@ onMounted(async () => {
     
     // 更新十字准线位置（使用画布坐标）
     const canvasRect = canvasEl.value!.getBoundingClientRect();
-    crosshairX.value = ev.e.clientX - canvasRect.left;
-    crosshairY.value = ev.e.clientY - canvasRect.top;
+    const mouseEvent = ev.e as MouseEvent;
+    crosshairX.value = mouseEvent.clientX - canvasRect.left;
+    crosshairY.value = mouseEvent.clientY - canvasRect.top;
     
     // 更新坐标显示（根据配置单位转换）
     const scale = renderConfig.value.scale.pixelsPerMeter / 1000;

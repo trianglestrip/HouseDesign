@@ -28,8 +28,8 @@ interface ShortcutConfig {
  * 快捷键管理器
  */
 export function useShortcuts(
-  canvas: Ref<Canvas | null>,
-  geometryKernel?: GeometryKernel
+  _canvas: Ref<Canvas | null>,
+  _geometryKernel?: GeometryKernel
 ) {
   const shortcuts = new Map<string, ShortcutConfig>();
   let isEnabled = true;
