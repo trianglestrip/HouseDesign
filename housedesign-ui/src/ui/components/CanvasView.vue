@@ -13,6 +13,7 @@ import {
 } from '@housedesign/core';
 import { useEditorStore } from '../stores/editorStore';
 import { useShortcuts } from '../composables/useShortcuts';
+import DimensionInput from './DimensionInput.vue';
 import { Canvas, Rect } from 'fabric';
 import * as fabric from 'fabric';
 import type { FabricObject } from 'fabric';
@@ -77,6 +78,13 @@ const cursorCoordsMm = ref({ x: 0, y: 0 });
 const isShiftPressed = ref(false);
 const isCtrlPressed = ref(false);
 
+// 数值输入框状态
+const dimensionInputVisible = ref(false);
+const dimensionInputPosition = ref({ x: 0, y: 0 });
+const dimensionInputMode = ref<'length' | 'angle'>('length');
+let lockedLength: number | null = null;
+let lockedAngle: number | null = null;
+
 // 键盘事件处理函数（仅处理修饰键状态）
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Shift') {
@@ -110,6 +118,61 @@ function updateCrosshairVisibility() {
   const isDrawing = currentNodeId !== null;
   
   crosshairVisible.value = isDrawingTool || isDrawing || isCtrlPressed.value;
+}
+
+// 处理数值输入确认
+function handleDimensionConfirm(value: number, mode: 'length' | 'angle') {
+  console.log('[数值输入] 确认:', value, mode);
+  
+  if (mode === 'length') {
+    lockedLength = value; // 锁定长度（单位：mm）
+  } else {
+    lockedAngle = value; // 锁定角度（单位：度）
+  }
+  
+  dimensionInputVisible.value = false;
+  
+  // 如果正在绘制墙体，应用锁定的值
+  if (currentNodeId && tempWallLine) {
+    // 重新计算预览线位置
+    const currentNode = geometryKernel.getTopology().getNode(currentNodeId);
+    if (currentNode) {
+      const scale = renderConfig.value.scale.pixelsPerMeter / 1000;
+      
+      if (lockedLength && lockedAngle !== null) {
+        // 同时锁定长度和角度
+        const angleRad = (lockedAngle * Math.PI) / 180;
+        const endPosMm = {
+          x: currentNode.position.x + lockedLength * Math.cos(angleRad),
+          y: currentNode.position.y + lockedLength * Math.sin(angleRad),
+        };
+        const endPosPx = {
+          x: endPosMm.x * scale,
+          y: endPosMm.y * scale,
+        };
+        tempWallLine.set({
+          x2: endPosPx.x,
+          y2: endPosPx.y,
+        });
+        canvas!.requestRenderAll();
+      }
+    }
+  }
+}
+
+// 处理数值输入取消
+function handleDimensionCancel() {
+  console.log('[数值输入] 取消');
+  dimensionInputVisible.value = false;
+  lockedLength = null;
+  lockedAngle = null;
+}
+
+// 显示数值输入框
+function showDimensionInput(x: number, y: number) {
+  dimensionInputPosition.value = { x: x + 20, y: y + 20 };
+  dimensionInputVisible.value = true;
+  dimensionInputMode.value = 'length';
 }
 
 // 注册常用快捷键
@@ -498,6 +561,10 @@ function addWallPoint(x: number, y: number) {
     });
     canvas!.add(tempWallLine);
     
+    // 显示数值输入框
+    const canvasRect = canvasEl.value!.getBoundingClientRect();
+    showDimensionInput(x + canvasRect.left, y + canvasRect.top);
+    
     // 开始绘制，更新十字准线状态
     updateCrosshairVisibility();
   } else {
@@ -744,6 +811,22 @@ function updateWallPreview(x: number, y: number) {
   const currentNode = topology.getNode(currentNodeId);
   if (!currentNode) return;
   
+  // 如果锁定了长度或角度，应用约束
+  if (lockedLength !== null || lockedAngle !== null) {
+    const dx = positionMm.x - currentNode.position.x;
+    const dy = positionMm.y - currentNode.position.y;
+    const currentLength = Math.sqrt(dx * dx + dy * dy);
+    const currentAngle = Math.atan2(dy, dx);
+    
+    let finalLength = lockedLength !== null ? lockedLength : currentLength;
+    let finalAngle = lockedAngle !== null ? (lockedAngle * Math.PI / 180) : currentAngle;
+    
+    positionMm = {
+      x: currentNode.position.x + finalLength * Math.cos(finalAngle),
+      y: currentNode.position.y + finalLength * Math.sin(finalAngle),
+    };
+  }
+  
   // Shift 键增强吸附（优先级最高）
   if (isShiftPressed.value) {
     const snapConfig = renderConfig.value.snap;
@@ -979,6 +1062,9 @@ function finishWallDrawing() {
   
   // 重置状态
   currentNodeId = null;
+  lockedLength = null;
+  lockedAngle = null;
+  dimensionInputVisible.value = false;
   
   // 触发房间检测
   geometryKernel.detectRooms();
@@ -1391,6 +1477,17 @@ watch(
       <span class="hint-icon">✛</span>
       <span>Ctrl 显示十字准线</span>
     </div>
+    
+    <!-- 数值输入框 -->
+    <DimensionInput
+      :visible="dimensionInputVisible"
+      :position="dimensionInputPosition"
+      :mode="dimensionInputMode"
+      :unit="renderConfig.ruler.unit"
+      @confirm="handleDimensionConfirm"
+      @cancel="handleDimensionCancel"
+      @update:mode="dimensionInputMode = $event"
+    />
     
     <canvas ref="canvasEl"></canvas>
   </div>
