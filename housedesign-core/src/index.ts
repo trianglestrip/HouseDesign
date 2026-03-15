@@ -45,6 +45,9 @@ export {
 // ============ 撤销/重做 ============
 export * from './UndoRedo';
 
+// ============ 命令系统 ============
+export * from './commands';
+
 // ============ 序列化 ============
 export * from './Serializer';
 

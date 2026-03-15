@@ -74,12 +74,39 @@ const isCtrlPressed = ref(false);
 
 // 键盘事件处理函数
 const handleKeyDown = (e: KeyboardEvent) => {
+  // 检查是否在输入框中
+  const target = e.target as HTMLElement;
+  const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+  
   if (e.key === 'Shift') {
     isShiftPressed.value = true;
   }
   if (e.key === 'Control' || e.key === 'Meta') {
     isCtrlPressed.value = true;
     updateCrosshairVisibility();
+  }
+  
+  // 撤销/重做快捷键（不在输入框时）
+  if (!isInputFocused) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      const success = geometryKernel.undo();
+      if (success) {
+        console.log('[撤销] 操作已撤销');
+        renderAllWalls();
+        // 更新editorStore状态
+        editorStore.setUndoRedoState(geometryKernel.canUndo(), geometryKernel.canRedo());
+      }
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      const success = geometryKernel.redo();
+      if (success) {
+        console.log('[重做] 操作已重做');
+        renderAllWalls();
+        // 更新editorStore状态
+        editorStore.setUndoRedoState(geometryKernel.canUndo(), geometryKernel.canRedo());
+      }
+    }
   }
 };
 

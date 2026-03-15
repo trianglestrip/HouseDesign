@@ -12,6 +12,7 @@
 import { TopologyGraph, type Node, type Edge } from './Topology';
 import { Wall, Opening, OpeningType, Room } from './Semantic';
 import { SnapSystem, type SnapResult } from './Snap';
+import { UndoRedoManager } from './UndoRedo';
 import type { Vec2 } from './geometry/Vec2';
 import * as Vec2Math from './geometry/Vec2';
 import { generateWallMesh } from './geometry/WallMesh';
@@ -22,6 +23,7 @@ export class GeometryKernel {
   private openings: Map<string, Opening> = new Map();
   private rooms: Map<string, Room> = new Map();
   private snapSystem: SnapSystem;
+  private undoRedoManager: UndoRedoManager;
 
   private nextWallId = 0;
   private nextOpeningId = 0;
@@ -30,6 +32,42 @@ export class GeometryKernel {
   constructor() {
     this.topology = new TopologyGraph();
     this.snapSystem = new SnapSystem(15, 100);
+    this.undoRedoManager = new UndoRedoManager({ maxHistorySize: 100 });
+  }
+
+  /**
+   * 获取撤销/重做管理器
+   */
+  getUndoRedoManager(): UndoRedoManager {
+    return this.undoRedoManager;
+  }
+
+  /**
+   * 撤销上一个操作
+   */
+  undo(): boolean {
+    return this.undoRedoManager.undo();
+  }
+
+  /**
+   * 重做上一个撤销的操作
+   */
+  redo(): boolean {
+    return this.undoRedoManager.redo();
+  }
+
+  /**
+   * 是否可以撤销
+   */
+  canUndo(): boolean {
+    return this.undoRedoManager.canUndo;
+  }
+
+  /**
+   * 是否可以重做
+   */
+  canRedo(): boolean {
+    return this.undoRedoManager.canRedo;
   }
 
   /**
@@ -115,6 +153,50 @@ export class GeometryKernel {
     });
 
     return this.snapSystem.findBestSnap(position, nodes, edges, nodePositions, excludeNodeId);
+  }
+
+  /**
+   * 获取墙体
+   */
+  getWall(wallId: string): Wall | undefined {
+    return this.walls.get(wallId);
+  }
+
+  /**
+   * 获取所有墙体
+   */
+  getWalls(): Wall[] {
+    return Array.from(this.walls.values());
+  }
+
+  /**
+   * 删除墙体
+   */
+  deleteWall(wallId: string): void {
+    const wall = this.walls.get(wallId);
+    if (!wall) return;
+
+    // 删除边
+    this.topology.deleteEdge(wall.edgeId);
+
+    // 删除墙体
+    this.walls.delete(wallId);
+
+    // 重建拓扑结构
+    this.topology.rebuildHalfEdges();
+
+    // 重新检测房间
+    this.detectRooms();
+  }
+
+  /**
+   * 更新墙体厚度
+   */
+  updateWallThickness(wallId: string, thickness: number): void {
+    const wall = this.walls.get(wallId);
+    if (!wall) return;
+
+    wall.thickness = thickness;
   }
 
   /**
@@ -278,13 +360,6 @@ export class GeometryKernel {
     });
 
     return result;
-  }
-
-  /**
-   * 获取所有墙体
-   */
-  getWalls(): Wall[] {
-    return Array.from(this.walls.values());
   }
 
   /**
