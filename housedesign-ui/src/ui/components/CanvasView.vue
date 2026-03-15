@@ -170,10 +170,13 @@ function redrawGrid() {
   if (!canvas) return;
   
   // 移除旧网格线
+  const oldGridCount = gridLines.length;
   gridLines.forEach(line => {
     canvas!.remove(line);
   });
   gridLines = [];
+  
+  console.log('[redrawGrid] 清除了', oldGridCount, '条旧网格线');
   
   // 计算当前可视区域（考虑缩放和平移）
   const vpt = canvas.viewportTransform!;
@@ -209,7 +212,6 @@ function redrawGrid() {
     });
     gridLines.push(line);
     canvas.add(line);
-    canvas.sendObjectToBack(line);
   }
   
   // 绘制水平线
@@ -225,8 +227,16 @@ function redrawGrid() {
     });
     gridLines.push(line);
     canvas.add(line);
-    canvas.sendObjectToBack(line);
   }
+  
+  // 批量将所有网格线移到最底层
+  gridLines.forEach(line => {
+    canvas!.sendObjectToBack(line);
+  });
+  
+  console.log('[redrawGrid] 绘制了', gridLines.length, '条新网格线');
+  
+  canvas.requestRenderAll();
 }
 
 // 更新刻度尺标记（HTML 元素，不在 Canvas 内）
@@ -480,6 +490,11 @@ function renderAllWalls() {
     
     (polygon as any).data = { type: 'wall', wallId };
     canvas!.add(polygon);
+  });
+  
+  // 确保网格线在最底层
+  gridLines.forEach(line => {
+    canvas!.sendObjectToBack(line);
   });
   
   // 渲染端点控制点
@@ -932,9 +947,6 @@ onMounted(async () => {
       lastPosX = evt.clientX;
       lastPosY = evt.clientY;
       canvas!.defaultCursor = 'grabbing';
-      
-      // 重新绘制网格以适应新的视口
-      redrawGrid();
     }
   });
   
