@@ -48,6 +48,8 @@ let currentNodeId: string | null = null; // 当前正在绘制的起点节点ID
 let tempWallLine: fabric.Line | null = null; // 跟随鼠标的预览线
 let snapIndicator: fabric.Circle | null = null; // 吸附点指示器
 let wallEndpoints: Map<string, fabric.Circle> = new Map(); // 墙体端点控制点
+let dimensionLine: fabric.Line | null = null; // 尺寸标注线
+let dimensionText: fabric.Text | null = null; // 尺寸文字
 
 // 刻度尺标记数据
 const topRulerMarks = ref<Array<{ index: number; position: number; value: string; isMajor: boolean }>>([]);
@@ -555,6 +557,104 @@ function updateWallPreview(x: number, y: number) {
     y2: finalPosPx.y,
   });
   
+  // 绘制尺寸标注（根据配置决定是否显示）
+  const dimConfig = renderConfig.value.dimension;
+  if (dimConfig.enabled) {
+    // 计算墙体长度（毫米）
+    const dx = finalPosMm.x - currentNode.position.x;
+    const dy = finalPosMm.y - currentNode.position.y;
+    const lengthMm = Math.sqrt(dx * dx + dy * dy);
+    
+    // 根据配置单位转换长度
+    const unit = renderConfig.value.ruler.unit || 'cm';
+    let displayLength = lengthMm;
+    let unitText = 'mm';
+    
+    if (unit === 'cm') {
+      displayLength = lengthMm / 10;
+      unitText = 'cm';
+    } else if (unit === 'm') {
+      displayLength = lengthMm / 1000;
+      unitText = 'm';
+    }
+    
+    // 绘制尺寸标注线（在墙体上方偏移）
+    const midPx = {
+      x: (startPx.x + finalPosPx.x) / 2,
+      y: (startPx.y + finalPosPx.y) / 2,
+    };
+    
+    // 计算垂直于墙体的偏移方向
+    const wallAngle = Math.atan2(finalPosPx.y - startPx.y, finalPosPx.x - startPx.x);
+    const offsetDistance = dimConfig.offsetDistance;
+    const offsetX = -Math.sin(wallAngle) * offsetDistance;
+    const offsetY = Math.cos(wallAngle) * offsetDistance;
+    
+    const dimStart = {
+      x: startPx.x + offsetX,
+      y: startPx.y + offsetY,
+    };
+    const dimEnd = {
+      x: finalPosPx.x + offsetX,
+      y: finalPosPx.y + offsetY,
+    };
+    
+    // 创建或更新尺寸标注线
+    if (!dimensionLine) {
+      dimensionLine = new fabric.Line([dimStart.x, dimStart.y, dimEnd.x, dimEnd.y], {
+        stroke: dimConfig.lineColor,
+        strokeWidth: 1,
+        strokeDashArray: [5, 3],
+        selectable: false,
+        evented: false,
+        opacity: 0.8,
+      });
+      canvas!.add(dimensionLine);
+    } else {
+      dimensionLine.set({
+        x1: dimStart.x,
+        y1: dimStart.y,
+        x2: dimEnd.x,
+        y2: dimEnd.y,
+        visible: true,
+      });
+    }
+    
+    // 创建或更新尺寸文字
+    const dimText = `${displayLength.toFixed(unit === 'm' ? 2 : 0)} ${unitText}`;
+    const textPos = {
+      x: midPx.x + offsetX,
+      y: midPx.y + offsetY,
+    };
+    
+    if (!dimensionText) {
+      dimensionText = new fabric.Text(dimText, {
+        left: textPos.x,
+        top: textPos.y,
+        fontSize: dimConfig.fontSize,
+        fill: dimConfig.textColor,
+        backgroundColor: dimConfig.backgroundColor,
+        padding: 3,
+        selectable: false,
+        evented: false,
+        originX: 'center',
+        originY: 'center',
+      });
+      canvas!.add(dimensionText);
+    } else {
+      dimensionText.set({
+        text: dimText,
+        left: textPos.x,
+        top: textPos.y,
+        visible: true,
+      });
+    }
+  } else {
+    // 隐藏尺寸标注
+    if (dimensionLine) dimensionLine.set({ visible: false });
+    if (dimensionText) dimensionText.set({ visible: false });
+  }
+  
   canvas!.requestRenderAll();
 }
 
@@ -570,6 +670,16 @@ function finishWallDrawing() {
   if (snapIndicator) {
     canvas!.remove(snapIndicator);
     snapIndicator = null;
+  }
+  
+  // 清除尺寸标注
+  if (dimensionLine) {
+    canvas!.remove(dimensionLine);
+    dimensionLine = null;
+  }
+  if (dimensionText) {
+    canvas!.remove(dimensionText);
+    dimensionText = null;
   }
   
   // 重置状态

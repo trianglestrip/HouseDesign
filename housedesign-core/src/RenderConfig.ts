@@ -20,6 +20,7 @@ export interface WallRenderConfig {
   strokeWidth: number;
   opacity: number;
   defaultThickness: number;  // 默认墙厚（毫米）
+  defaultType: 'solid' | 'dashed' | 'double';  // 默认墙体类型
 }
 
 export interface EndpointRenderConfig {
@@ -45,6 +46,16 @@ export interface PreviewLineConfig {
   strokeWidth: number;
   strokeDashArray: number[];
   opacity: number;
+  showCenterLine: boolean;  // 是否显示中心线
+}
+
+export interface DimensionConfig {
+  enabled: boolean;          // 是否显示尺寸标注
+  lineColor: string;         // 标注线颜色
+  textColor: string;         // 文字颜色
+  backgroundColor: string;   // 文字背景色
+  fontSize: number;          // 字体大小
+  offsetDistance: number;    // 标注线偏移距离（像素）
 }
 
 export interface GridConfig {
@@ -72,6 +83,7 @@ export interface RenderConfig {
   endpoint: EndpointRenderConfig;
   snapIndicator: SnapIndicatorConfig;
   previewLine: PreviewLineConfig;
+  dimension: DimensionConfig;
   grid: GridConfig;
   ruler: RulerConfig;
   door: {
@@ -108,9 +120,10 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
   wall: {
     fillColor: '#d4c4b0',
     strokeColor: '#8b7355',
-    strokeWidth: 1,
+    strokeWidth: 2,
     opacity: 0.9,
     defaultThickness: 200,  // 200mm
+    defaultType: 'solid',
   },
   endpoint: {
     radius: 6,
@@ -131,8 +144,17 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
   previewLine: {
     strokeColor: '#409EFF',
     strokeWidth: 2,
-    strokeDashArray: [10, 5],
-    opacity: 0.6,
+    strokeDashArray: [8, 4],
+    opacity: 0.7,
+    showCenterLine: true,
+  },
+  dimension: {
+    enabled: true,
+    lineColor: '#ff6b00',
+    textColor: '#ff6b00',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 12,
+    offsetDistance: 30,
   },
   grid: {
     size: 20,
@@ -178,6 +200,7 @@ export function loadRenderConfig(json: Partial<RenderConfig>): RenderConfig {
     endpoint: { ...DEFAULT_RENDER_CONFIG.endpoint, ...json.endpoint },
     snapIndicator: { ...DEFAULT_RENDER_CONFIG.snapIndicator, ...json.snapIndicator },
     previewLine: { ...DEFAULT_RENDER_CONFIG.previewLine, ...json.previewLine },
+    dimension: { ...DEFAULT_RENDER_CONFIG.dimension, ...json.dimension },
     grid: { ...DEFAULT_RENDER_CONFIG.grid, ...json.grid },
     ruler: { ...DEFAULT_RENDER_CONFIG.ruler, ...json.ruler },
     door: { ...DEFAULT_RENDER_CONFIG.door, ...json.door },
