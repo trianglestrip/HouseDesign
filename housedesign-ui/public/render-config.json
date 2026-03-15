@@ -28,14 +28,20 @@
     "opacity": 0.8,
     "hoverOpacity": 1.0
   },
+  "snap": {
+    "endpointDistance": 100,
+    "gridDistance": 50,
+    "angleThreshold": 15,
+    "lengthIncrement": 50,
+    "crosshairDistance": 20,
+    "comment": "吸附参数：端点距离100mm，网格50mm，角度15度，长度增量50mm(5cm)，十字准线吸附20mm(2cm)"
+  },
   "snapIndicator": {
     "radius": 8,
     "fillColor": "#409EFF",
     "strokeColor": "#fff",
     "strokeWidth": 2,
-    "opacity": 0.8,
-    "angleSnapThreshold": 15,
-    "comment": "按住Shift时，角度在15度范围内吸附到水平/垂直"
+    "opacity": 0.8
   },
   "previewLine": {
     "strokeColor": "#409EFF",

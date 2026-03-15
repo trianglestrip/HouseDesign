@@ -32,13 +32,20 @@ export interface EndpointRenderConfig {
   hoverOpacity: number;
 }
 
+export interface SnapConfig {
+  endpointDistance: number;    // 端点吸附距离（毫米）
+  gridDistance: number;        // 网格吸附距离（毫米）
+  angleThreshold: number;      // 角度吸附阈值（度）
+  lengthIncrement: number;     // 长度增量吸附（毫米）
+  crosshairDistance: number;   // 十字准线吸附距离（毫米）
+}
+
 export interface SnapIndicatorConfig {
   radius: number;
   fillColor: string;
   strokeColor: string;
   strokeWidth: number;
   opacity: number;
-  angleSnapThreshold: number;  // 角度吸附阈值（度）
 }
 
 export interface PreviewLineConfig {
@@ -81,6 +88,7 @@ export interface RenderConfig {
   canvas: CanvasConfig;
   wall: WallRenderConfig;
   endpoint: EndpointRenderConfig;
+  snap: SnapConfig;
   snapIndicator: SnapIndicatorConfig;
   previewLine: PreviewLineConfig;
   dimension: DimensionConfig;
@@ -133,13 +141,19 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
     opacity: 0.8,
     hoverOpacity: 1.0,
   },
+  snap: {
+    endpointDistance: 100,      // 端点吸附距离 100mm (10cm)
+    gridDistance: 50,           // 网格吸附距离 50mm (5cm)
+    angleThreshold: 15,         // 角度吸附阈值 15度
+    lengthIncrement: 50,        // 长度增量吸附 50mm (5cm)
+    crosshairDistance: 20,      // 十字准线吸附 20mm (2cm)
+  },
   snapIndicator: {
     radius: 8,
     fillColor: '#409EFF',
     strokeColor: '#fff',
     strokeWidth: 2,
     opacity: 0.8,
-    angleSnapThreshold: 15,
   },
   previewLine: {
     strokeColor: '#409EFF',
@@ -198,6 +212,7 @@ export function loadRenderConfig(json: Partial<RenderConfig>): RenderConfig {
     canvas: { ...DEFAULT_RENDER_CONFIG.canvas, ...json.canvas },
     wall: { ...DEFAULT_RENDER_CONFIG.wall, ...json.wall },
     endpoint: { ...DEFAULT_RENDER_CONFIG.endpoint, ...json.endpoint },
+    snap: { ...DEFAULT_RENDER_CONFIG.snap, ...json.snap },
     snapIndicator: { ...DEFAULT_RENDER_CONFIG.snapIndicator, ...json.snapIndicator },
     previewLine: { ...DEFAULT_RENDER_CONFIG.previewLine, ...json.previewLine },
     dimension: { ...DEFAULT_RENDER_CONFIG.dimension, ...json.dimension },

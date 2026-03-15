@@ -509,30 +509,64 @@ function updateWallPreview(x: number, y: number) {
   const currentNode = topology.getNode(currentNodeId);
   if (!currentNode) return;
   
-  // Shift 键角度吸附（优先级最高）
+  // Shift 键增强吸附（优先级最高）
   if (isShiftPressed.value) {
+    const snapConfig = renderConfig.value.snap;
     const dx = positionMm.x - currentNode.position.x;
     const dy = positionMm.y - currentNode.position.y;
     const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    
-    // 从配置读取吸附角度阈值
-    const snapAngle = renderConfig.value.snapIndicator.angleSnapThreshold || 15;
-    
-    // 检测是否接近水平（0°, 180°）或垂直（90°, -90°）
     const absAngle = Math.abs(angle);
     
-    if (absAngle < snapAngle || absAngle > 180 - snapAngle) {
+    // 1. 角度吸附：接近水平/垂直时自动对齐
+    if (absAngle < snapConfig.angleThreshold || absAngle > 180 - snapConfig.angleThreshold) {
       // 吸附到水平
       positionMm.y = currentNode.position.y;
       console.log('[角度吸附] 水平', angle.toFixed(1), '°');
-    } else if (Math.abs(absAngle - 90) < snapAngle) {
+    } else if (Math.abs(absAngle - 90) < snapConfig.angleThreshold) {
       // 吸附到垂直（90°）
       positionMm.x = currentNode.position.x;
       console.log('[角度吸附] 垂直', angle.toFixed(1), '°');
-    } else if (Math.abs(absAngle + 90) < snapAngle) {
+    } else if (Math.abs(absAngle + 90) < snapConfig.angleThreshold) {
       // 吸附到垂直（-90°）
       positionMm.x = currentNode.position.x;
       console.log('[角度吸附] 垂直', angle.toFixed(1), '°');
+    }
+    
+    // 2. 长度增量吸附：按 5cm 增量吸附
+    const newDx = positionMm.x - currentNode.position.x;
+    const newDy = positionMm.y - currentNode.position.y;
+    const length = Math.sqrt(newDx * newDx + newDy * newDy);
+    const increment = snapConfig.lengthIncrement;
+    const snappedLength = Math.round(length / increment) * increment;
+    
+    if (Math.abs(length - snappedLength) < increment / 2) {
+      // 按增量吸附长度
+      const ratio = snappedLength / length;
+      positionMm.x = currentNode.position.x + newDx * ratio;
+      positionMm.y = currentNode.position.y + newDy * ratio;
+      console.log('[长度吸附]', length.toFixed(0), 'mm →', snappedLength, 'mm');
+    }
+    
+    // 3. 十字准线吸附：吸附到附近的水平/垂直线
+    const crosshairDist = snapConfig.crosshairDistance;
+    const allNodes = topology.getNodes();
+    
+    for (const node of allNodes) {
+      if (node.id === currentNodeId) continue;
+      
+      // 检查是否接近水平对齐
+      if (Math.abs(positionMm.y - node.position.y) < crosshairDist) {
+        positionMm.y = node.position.y;
+        console.log('[十字准线吸附] 水平对齐到节点', node.id);
+        break;
+      }
+      
+      // 检查是否接近垂直对齐
+      if (Math.abs(positionMm.x - node.position.x) < crosshairDist) {
+        positionMm.x = node.position.x;
+        console.log('[十字准线吸附] 垂直对齐到节点', node.id);
+        break;
+      }
     }
   }
   
