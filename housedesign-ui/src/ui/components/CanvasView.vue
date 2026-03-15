@@ -49,6 +49,16 @@ let tempWallLine: fabric.Line | null = null; // 跟随鼠标的预览线
 let snapIndicator: fabric.Circle | null = null; // 吸附点指示器
 let wallEndpoints: Map<string, fabric.Circle> = new Map(); // 墙体端点控制点
 
+// 刻度尺标记数据
+const topRulerMarks = ref<Array<{ index: number; position: number; value: string; isMajor: boolean }>>([]);
+const leftRulerMarks = ref<Array<{ index: number; position: number; value: string; isMajor: boolean }>>([]);
+
+// 鼠标十字准线
+const crosshairVisible = ref(false);
+const crosshairX = ref(0);
+const crosshairY = ref(0);
+const cursorCoordsMm = ref({ x: 0, y: 0 });
+
 // 获取墙体厚度（毫米）
 function getWallThickness(): number {
   return renderConfig.value.wall.defaultThickness;
@@ -71,19 +81,14 @@ async function loadRenderConfig() {
 // 绘制网格线（每5格用更深的颜色）
 function drawGrid(canvas: Canvas, width: number, height: number) {
   const config = renderConfig.value.grid;
-  const rulerConfig = renderConfig.value.ruler;
   const gridLines: FabricObject[] = [];
-  
-  // 刻度尺的偏移量
-  const offsetX = rulerConfig.width;
-  const offsetY = rulerConfig.width;
 
   // 绘制垂直线
   for (let i = 0; i * config.size <= width; i++) {
-    const x = i * config.size + offsetX;
+    const x = i * config.size;
     const isMajor = i % config.majorInterval === 0;
     
-    const line = new fabric.Line([x, offsetY, x, height], {
+    const line = new fabric.Line([x, 0, x, height], {
       stroke: isMajor ? config.majorColor : config.color,
       strokeWidth: isMajor ? config.majorStrokeWidth : config.strokeWidth,
       selectable: false,
@@ -94,10 +99,10 @@ function drawGrid(canvas: Canvas, width: number, height: number) {
 
   // 绘制水平线
   for (let i = 0; i * config.size <= height; i++) {
-    const y = i * config.size + offsetY;
+    const y = i * config.size;
     const isMajor = i % config.majorInterval === 0;
     
-    const line = new fabric.Line([offsetX, y, width, y], {
+    const line = new fabric.Line([0, y, width, y], {
       stroke: isMajor ? config.majorColor : config.color,
       strokeWidth: isMajor ? config.majorStrokeWidth : config.strokeWidth,
       selectable: false,
@@ -117,124 +122,44 @@ function drawGrid(canvas: Canvas, width: number, height: number) {
   });
 }
 
-// 绘制刻度尺
-function drawRulers(canvas: Canvas, width: number, height: number) {
+// 更新刻度尺标记（HTML 元素，不在 Canvas 内）
+function updateRulers(width: number, height: number) {
   const rulerConfig = renderConfig.value.ruler;
   const gridConfig = renderConfig.value.grid;
   const rulerWidth = rulerConfig.width;
-  
-  // 顶部刻度尺背景
-  const topRuler = new fabric.Rect({
-    left: 0,
-    top: 0,
-    width: width,
-    height: rulerWidth,
-    fill: rulerConfig.backgroundColor,
-    selectable: false,
-    evented: false,
-  });
-  canvas.add(topRuler);
-  
-  // 左侧刻度尺背景
-  const leftRuler = new fabric.Rect({
-    left: 0,
-    top: 0,
-    width: rulerWidth,
-    height: height,
-    fill: rulerConfig.backgroundColor,
-    selectable: false,
-    evented: false,
-  });
-  canvas.add(leftRuler);
-  
-  // 左上角方块
-  const corner = new fabric.Rect({
-    left: 0,
-    top: 0,
-    width: rulerWidth,
-    height: rulerWidth,
-    fill: rulerConfig.backgroundColor,
-    selectable: false,
-    evented: false,
-  });
-  canvas.add(corner);
-  
-  // 绘制顶部刻度
   const scale = renderConfig.value.scale.pixelsPerMeter / 1000; // mm -> px
-  for (let i = 0; i * gridConfig.size <= width - rulerWidth; i++) {
-    const x = i * gridConfig.size + rulerWidth;
-    const isMajor = i % gridConfig.majorInterval === 0;
-    
-    if (isMajor) {
-      // 主刻度线
-      const line = new fabric.Line([x, rulerWidth - 10, x, rulerWidth], {
-        stroke: rulerConfig.lineColor,
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(line);
-      
-      // 刻度值（毫米）
-      const valueMm = Math.round(i * gridConfig.size / scale);
-      const text = new fabric.Text(valueMm.toString(), {
-        left: x - 10,
-        top: 5,
-        fontSize: rulerConfig.fontSize,
-        fill: rulerConfig.textColor,
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(text);
-    } else {
-      // 次刻度线
-      const line = new fabric.Line([x, rulerWidth - 5, x, rulerWidth], {
-        stroke: rulerConfig.lineColor,
-        strokeWidth: 0.5,
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(line);
-    }
-  }
   
-  // 绘制左侧刻度
-  for (let i = 0; i * gridConfig.size <= height - rulerWidth; i++) {
-    const y = i * gridConfig.size + rulerWidth;
+  // 计算顶部刻度
+  const topMarks = [];
+  for (let i = 0; i * gridConfig.size <= width - rulerWidth; i++) {
+    const x = i * gridConfig.size;
     const isMajor = i % gridConfig.majorInterval === 0;
+    const valueMm = Math.round(i * gridConfig.size / scale);
     
-    if (isMajor) {
-      // 主刻度线
-      const line = new fabric.Line([rulerWidth - 10, y, rulerWidth, y], {
-        stroke: rulerConfig.lineColor,
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(line);
-      
-      // 刻度值（毫米）
-      const valueMm = Math.round(i * gridConfig.size / scale);
-      const text = new fabric.Text(valueMm.toString(), {
-        left: 3,
-        top: y - 6,
-        fontSize: rulerConfig.fontSize,
-        fill: rulerConfig.textColor,
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(text);
-    } else {
-      // 次刻度线
-      const line = new fabric.Line([rulerWidth - 5, y, rulerWidth, y], {
-        stroke: rulerConfig.lineColor,
-        strokeWidth: 0.5,
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(line);
-    }
+    topMarks.push({
+      index: i,
+      position: x,
+      value: valueMm.toString(),
+      isMajor,
+    });
   }
+  topRulerMarks.value = topMarks;
+  
+  // 计算左侧刻度
+  const leftMarks = [];
+  for (let i = 0; i * gridConfig.size <= height - rulerWidth; i++) {
+    const y = i * gridConfig.size;
+    const isMajor = i % gridConfig.majorInterval === 0;
+    const valueMm = Math.round(i * gridConfig.size / scale);
+    
+    leftMarks.push({
+      index: i,
+      position: y,
+      value: valueMm.toString(),
+      isMajor,
+    });
+  }
+  leftRulerMarks.value = leftMarks;
 }
 
 function syncEngineToCanvas() {
@@ -712,8 +637,8 @@ onMounted(async () => {
   // 绘制网格线
   drawGrid(canvas, width, height);
   
-  // 绘制刻度尺
-  drawRulers(canvas, width, height);
+  // 更新刻度尺标记（HTML 元素）
+  updateRulers(width, height);
 
   unsubs = [
     engine.events.on(EditorEvents.ELEMENT_ADDED, () => syncEngineToCanvas()),
@@ -762,10 +687,32 @@ onMounted(async () => {
   canvas.on('mouse:move', (ev) => {
     const point = canvas!.getScenePoint(ev.e);
     
+    // 更新十字准线位置（使用画布坐标）
+    const canvasRect = canvasEl.value!.getBoundingClientRect();
+    crosshairX.value = ev.e.clientX - canvasRect.left;
+    crosshairY.value = ev.e.clientY - canvasRect.top;
+    
+    // 更新坐标显示（转换为毫米）
+    const scale = renderConfig.value.scale.pixelsPerMeter / 1000;
+    cursorCoordsMm.value = {
+      x: Math.round(point.x / scale),
+      y: Math.round(point.y / scale)
+    };
+    
     // 墙体绘制模式：预览线跟随鼠标
     if (editorStore.currentTool === 'wall' && currentNodeId) {
       updateWallPreview(point.x, point.y);
     }
+  });
+  
+  // 鼠标进入画布
+  canvas.on('mouse:over', () => {
+    crosshairVisible.value = true;
+  });
+  
+  // 鼠标离开画布
+  canvas.on('mouse:out', () => {
+    crosshairVisible.value = false;
   });
   
   // 右键结束绘制
@@ -822,10 +769,10 @@ onMounted(async () => {
       const newWidth = canvasContainer.value.clientWidth;
       const newHeight = canvasContainer.value.clientHeight;
       
-      // 清除旧的网格线和刻度尺
+      // 清除旧的网格线
       const objects = canvas.getObjects().slice();
       objects.forEach(obj => {
-        if ((obj.type === 'line' || obj.type === 'rect' || obj.type === 'text') && !obj.selectable) {
+        if (obj.type === 'line' && !obj.selectable) {
           canvas!.remove(obj);
         }
       });
@@ -836,9 +783,11 @@ onMounted(async () => {
         height: newHeight,
       });
       
-      // 重新绘制网格和刻度尺
+      // 重新绘制网格
       drawGrid(canvas, newWidth, newHeight);
-      drawRulers(canvas, newWidth, newHeight);
+      
+      // 更新刻度尺标记（HTML 元素）
+      updateRulers(newWidth, newHeight);
       
       // 确保元素在网格上方
       syncEngineToCanvas();
@@ -874,6 +823,60 @@ watch(
 
 <template>
   <div ref="canvasContainer" class="canvas-view">
+    <!-- 顶部刻度尺 -->
+    <div class="ruler ruler-top">
+      <div 
+        v-for="i in topRulerMarks" 
+        :key="`top-${i.index}`"
+        class="ruler-mark"
+        :class="{ major: i.isMajor }"
+        :style="{ left: i.position + 'px' }"
+      >
+        <div class="ruler-line" :class="{ major: i.isMajor }"></div>
+        <span v-if="i.isMajor" class="ruler-text">{{ i.value }}</span>
+      </div>
+    </div>
+    
+    <!-- 左侧刻度尺 -->
+    <div class="ruler ruler-left">
+      <div 
+        v-for="i in leftRulerMarks" 
+        :key="`left-${i.index}`"
+        class="ruler-mark-left"
+        :class="{ major: i.isMajor }"
+        :style="{ top: i.position + 'px' }"
+      >
+        <div class="ruler-line" :class="{ major: i.isMajor }"></div>
+        <div v-if="i.isMajor" class="ruler-text-left">
+          <span v-for="(char, idx) in i.value.split('')" :key="idx">{{ char }}</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 左上角方块 -->
+    <div class="ruler-corner"></div>
+    
+    <!-- 十字准线 -->
+    <div 
+      v-if="crosshairVisible" 
+      class="crosshair"
+      :style="{ '--cursor-x': crosshairX + 'px', '--cursor-y': crosshairY + 'px' }"
+    >
+      <div class="crosshair-vertical" :style="{ left: crosshairX + 'px' }"></div>
+      <div class="crosshair-horizontal" :style="{ top: crosshairY + 'px' }"></div>
+      
+      <!-- 坐标显示 -->
+      <div 
+        class="cursor-coords" 
+        :style="{ 
+          left: (crosshairX + 15) + 'px', 
+          top: (crosshairY + 15) + 'px' 
+        }"
+      >
+        {{ cursorCoordsMm.x }}, {{ cursorCoordsMm.y }} mm
+      </div>
+    </div>
+    
     <canvas ref="canvasEl"></canvas>
   </div>
 </template>
@@ -884,9 +887,195 @@ watch(
   height: 100%;
   overflow: hidden;
   position: relative;
+  cursor: crosshair;
 }
 
 .canvas-view canvas {
   display: block;
+  cursor: none;
+}
+
+/* 刻度尺样式 - 固定在视口边缘 */
+.ruler {
+  position: absolute;
+  background: #f5f5f5;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+}
+
+.ruler-top {
+  left: 30px;
+  top: 0;
+  right: 0;
+  height: 30px;
+  border-bottom: 1px solid #dcdcdc;
+}
+
+.ruler-left {
+  left: 0;
+  top: 30px;
+  bottom: 0;
+  width: 30px;
+  border-right: 1px solid #dcdcdc;
+}
+
+.ruler-corner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  background: #f5f5f5;
+  border-right: 1px solid #dcdcdc;
+  border-bottom: 1px solid #dcdcdc;
+  z-index: 1001;
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+}
+
+.ruler-mark {
+  position: absolute;
+  height: 100%;
+}
+
+.ruler-mark-left {
+  position: absolute;
+  width: 100%;
+}
+
+.ruler-line {
+  position: absolute;
+  background: #999;
+}
+
+.ruler-top .ruler-line {
+  width: 1px;
+  height: 5px;
+  bottom: 0;
+  left: 0;
+}
+
+.ruler-top .ruler-line.major {
+  height: 10px;
+  background: #666;
+}
+
+.ruler-left .ruler-line {
+  width: 5px;
+  height: 1px;
+  right: 0;
+  top: 0;
+}
+
+.ruler-left .ruler-line.major {
+  width: 10px;
+  background: #666;
+}
+
+.ruler-text {
+  position: absolute;
+  font-size: 10px;
+  color: #333;
+  user-select: none;
+  font-family: monospace;
+}
+
+.ruler-top .ruler-text {
+  left: 50%;
+  transform: translateX(-50%);
+  top: 2px;
+  white-space: nowrap;
+}
+
+.ruler-text-left {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: #333;
+  user-select: none;
+  font-family: monospace;
+  line-height: 10px;
+}
+
+.ruler-text-left span {
+  display: block;
+  text-align: center;
+  height: 10px;
+  line-height: 10px;
+}
+
+/* 十字准线 */
+.crosshair {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 999;
+}
+
+.crosshair-vertical {
+  position: absolute;
+  top: 30px;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed rgba(0, 150, 255, 0.6);
+  transform: translateX(-0.5px);
+}
+
+.crosshair-horizontal {
+  position: absolute;
+  left: 30px;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed rgba(0, 150, 255, 0.6);
+  transform: translateY(-0.5px);
+}
+
+/* 自定义鼠标指针 */
+.crosshair::before {
+  content: '';
+  position: absolute;
+  left: var(--cursor-x, 0);
+  top: var(--cursor-y, 0);
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 150, 255, 0.8);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 4px rgba(0, 150, 255, 0.5);
+}
+
+.crosshair::after {
+  content: '';
+  position: absolute;
+  left: var(--cursor-x, 0);
+  top: var(--cursor-y, 0);
+  width: 4px;
+  height: 4px;
+  background: rgba(0, 150, 255, 0.9);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* 坐标显示 */
+.cursor-coords {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 </style>
