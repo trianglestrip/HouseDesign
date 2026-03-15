@@ -18,6 +18,7 @@ import type { Vec2 } from './geometry/Vec2';
 import * as Vec2Math from './geometry/Vec2';
 import { generateWallMesh } from './geometry/WallMesh';
 import * as TrimExtend from './geometry/TrimExtend';
+import * as Offset from './geometry/Offset';
 
 export class GeometryKernel {
   private topology: TopologyGraph;
@@ -101,6 +102,38 @@ export class GeometryKernel {
    */
   processTrimExtend(): number {
     return TrimExtend.autoTrimExtendWalls(this.walls, this.topology);
+  }
+
+  /**
+   * 偏移复制墙体
+   */
+  offsetWall(
+    wallId: string,
+    distance: number,
+    side: 'left' | 'right'
+  ): { wall: Wall; nodeA: Node; nodeB: Node; edge: Edge } | null {
+    const wall = this.walls.get(wallId);
+    if (!wall) return null;
+
+    const result = Offset.offsetWall(wall, distance, side, this.topology);
+    if (!result) return null;
+
+    // 创建新墙体
+    return this.createWall(result.start, result.end, wall.thickness);
+  }
+
+  /**
+   * 预览偏移效果
+   */
+  previewOffsetWall(
+    wallId: string,
+    distance: number,
+    side: 'left' | 'right'
+  ): { start: Vec2; end: Vec2 } | null {
+    const wall = this.walls.get(wallId);
+    if (!wall) return null;
+
+    return Offset.previewOffset(wall, distance, side, this.topology);
   }
 
   /**

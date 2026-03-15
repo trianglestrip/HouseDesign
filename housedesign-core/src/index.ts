@@ -29,6 +29,7 @@ export * as MiterJoin from './geometry/MiterJoin';
 export * as WallMesh from './geometry/WallMesh';
 export type { WallMeshData } from './geometry/WallMesh';
 export * as TrimExtend from './geometry/TrimExtend';
+export * as Offset from './geometry/Offset';
 
 // ============ Snap系统 ============
 export { SnapSystem, SnapType, type SnapResult } from './Snap';

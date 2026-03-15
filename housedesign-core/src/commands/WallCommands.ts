@@ -157,3 +157,38 @@ export class UpdateWallThicknessCommand implements ICommand {
     this.kernel.updateWallThickness(this.wallId, this.newThickness);
   }
 }
+
+/**
+ * 偏移复制墙体命令
+ */
+export class OffsetWallCommand implements ICommand {
+  private newWallId?: string;
+
+  constructor(
+    private kernel: GeometryKernel,
+    private wallId: string,
+    private distance: number,
+    private side: 'left' | 'right'
+  ) {}
+
+  execute(): void {
+    const result = this.kernel.offsetWall(this.wallId, this.distance, this.side);
+    if (result) {
+      this.newWallId = result.wall.id;
+    }
+  }
+
+  undo(): void {
+    if (this.newWallId) {
+      this.kernel.deleteWall(this.newWallId);
+    }
+  }
+
+  redo(): void {
+    this.execute();
+  }
+
+  getNewWallId(): string | undefined {
+    return this.newWallId;
+  }
+}
