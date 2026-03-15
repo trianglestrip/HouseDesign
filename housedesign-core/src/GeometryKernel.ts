@@ -16,6 +16,7 @@ import { UndoRedoManager } from './UndoRedo';
 import type { Vec2 } from './geometry/Vec2';
 import * as Vec2Math from './geometry/Vec2';
 import { generateWallMesh } from './geometry/WallMesh';
+import * as TrimExtend from './geometry/TrimExtend';
 
 export class GeometryKernel {
   private topology: TopologyGraph;
@@ -24,6 +25,7 @@ export class GeometryKernel {
   private rooms: Map<string, Room> = new Map();
   private snapSystem: SnapSystem;
   private undoRedoManager: UndoRedoManager;
+  private autoTrimExtend: boolean = false; // 自动修剪/延伸开关
 
   private nextWallId = 0;
   private nextOpeningId = 0;
@@ -68,6 +70,27 @@ export class GeometryKernel {
    */
   canRedo(): boolean {
     return this.undoRedoManager.canRedo;
+  }
+
+  /**
+   * 设置自动修剪/延伸开关
+   */
+  setAutoTrimExtend(enabled: boolean): void {
+    this.autoTrimExtend = enabled;
+  }
+
+  /**
+   * 获取自动修剪/延伸状态
+   */
+  getAutoTrimExtend(): boolean {
+    return this.autoTrimExtend;
+  }
+
+  /**
+   * 手动触发墙体修剪/延伸检测
+   */
+  processTrimExtend(): number {
+    return TrimExtend.autoTrimExtendWalls(this.walls, this.topology);
   }
 
   /**
@@ -133,6 +156,11 @@ export class GeometryKernel {
       this.walls.set(wallId, wall);
 
       this.topology.rebuildHalfEdges();
+      
+      // 自动修剪/延伸（如果开启）
+      if (this.autoTrimExtend) {
+        this.processTrimExtend();
+      }
 
       return { node, edge, wall };
     }
@@ -210,6 +238,11 @@ export class GeometryKernel {
 
     // 触发约束求解（如果有）
     // TODO: 实现约束系统
+    
+    // 自动修剪/延伸（如果开启）
+    if (this.autoTrimExtend) {
+      this.processTrimExtend();
+    }
 
     // 重新检测房间
     this.detectRooms();

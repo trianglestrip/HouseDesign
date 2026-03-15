@@ -78,6 +78,9 @@
     "unit": "cm",
     "comment": "左侧和顶部的刻度尺，单位：厘米"
   },
+  "geometry": {
+    "autoTrimExtend": false
+  },
   "door": {
     "fillColor": "#c4a35a",
     "strokeColor": "#333",

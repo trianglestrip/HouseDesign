@@ -83,6 +83,10 @@ export interface RulerConfig {
   unit: 'mm' | 'cm' | 'm';   // 显示单位
 }
 
+export interface GeometryConfig {
+  autoTrimExtend: boolean;   // 自动修剪/延伸开关
+}
+
 export interface RenderConfig {
   scale: ScaleConfig;
   canvas: CanvasConfig;
@@ -94,6 +98,7 @@ export interface RenderConfig {
   dimension: DimensionConfig;
   grid: GridConfig;
   ruler: RulerConfig;
+  geometry: GeometryConfig;
   door: {
     fillColor: string;
     strokeColor: string;
@@ -186,6 +191,9 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
     fontSize: 10,
     unit: 'cm',
   },
+  geometry: {
+    autoTrimExtend: false,  // 默认关闭自动修剪/延伸
+  },
   door: {
     fillColor: '#c4a35a',
     strokeColor: '#333',
@@ -218,6 +226,7 @@ export function loadRenderConfig(json: Partial<RenderConfig>): RenderConfig {
     dimension: { ...DEFAULT_RENDER_CONFIG.dimension, ...json.dimension },
     grid: { ...DEFAULT_RENDER_CONFIG.grid, ...json.grid },
     ruler: { ...DEFAULT_RENDER_CONFIG.ruler, ...json.ruler },
+    geometry: { ...DEFAULT_RENDER_CONFIG.geometry, ...json.geometry },
     door: { ...DEFAULT_RENDER_CONFIG.door, ...json.door },
     window: { ...DEFAULT_RENDER_CONFIG.window, ...json.window },
     furniture: { ...DEFAULT_RENDER_CONFIG.furniture, ...json.furniture },
